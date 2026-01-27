@@ -8,19 +8,16 @@
 
 #define P_ACCELE 2.5f
 
-
 class SceneGame : public Scene
 {
 public:
 
-	// ゴールまでの距離
-	const float GOAL_DISTANCE = 200.0f;
+	// ★変更: ゴールまでの距離を長く設定（ほぼ無限ランにするため）
+	const float GOAL_DISTANCE = 5000.0f;
 
 	DirectX::XMFLOAT4 attack_c = { 1.0f, 1.0f, 1.0f, 1.0f };
 
-
 	bool miss_played = false;
-
 
 	bool prevLButton = false;
 	bool prevRButton = false;
@@ -52,7 +49,6 @@ public:
 	DirectX::XMFLOAT3 goalCameraPosition{};
 	DirectX::XMFLOAT3 goalCameraFocus{};
 
-
 	struct scene_constants
 	{
 		DirectX::XMFLOAT4X4 view_projection;
@@ -64,7 +60,6 @@ public:
 		float pads[2];
 	};
 	scene_constants data{};
-
 
 	AttackType attack_type = AttackType::None;
 
@@ -99,8 +94,6 @@ public:
 	// カメラパラメータ
 	DirectX::XMFLOAT3 camera_position{ 0.0f, 0.0f, 0.0f };
 	DirectX::XMFLOAT4 light_direction{ 0.0, -0.8f, 1.0f, 0.0f };
-	//DirectX::XMFLOAT4 light_direction{ -1.0, -0.8f, -1.0f, 0.0f };
-	//DirectX::XMFLOAT4 light_direction{ 0.0, 0.0f, 1.0f, 0.0f };
 	DirectX::XMFLOAT3 camera_focus{ 0.0f, 0.283f, -10.0f };
 	float rotateX{ DirectX::XMConvertToRadians(20) };
 	float rotateY{ DirectX::XMConvertToRadians(0) };
@@ -109,11 +102,10 @@ public:
 	std::unique_ptr<bloom> bloomer;
 
 	// メッシュ管理
-	// 0: Player, 1: Enemy, 2: Stage
+	// 0: Player, 1: Enemy, 2: Stage, 3: Box, 4: Obstacle
 	std::unique_ptr<skinned_mesh> skinned_meshes[6];
 
 	std::unique_ptr<sprite_batch> sprite_batches[8];
-
 
 	DirectX::XMFLOAT3 playerScale{ 0.01f, 0.01f, 0.01f };
 	DirectX::XMFLOAT3 enemyScale{ 0.01f, 0.01f, 0.01f };
@@ -165,7 +157,7 @@ private:
 	{
 		DirectX::XMFLOAT3 position;
 		bool isAlive = true;
-		int type = 0; // 0:赤, 1:青, 2:岩(New!)
+		int type = 0; // 0:赤, 1:青, 2:岩(障害物)
 		animation::keyframe keyframe;
 		float animationTime = 0.0f;
 	};
@@ -185,10 +177,14 @@ private:
 	Box Boxes;
 
 	// ゲーム内定数
-	const float STAGE_TILE_LENGTH = 0.0; // 床1枚の長さ
-	const int MAX_STAGE_TILES = 1;        // 表示する床の枚数
-	// 例：SceneTitle や player 構造体
-// ステージ回転（ラジアン）
+	// ★変更: ここでステージモデル1個分の長さを定義します。
+	// モデルのサイズに合わせて調整してください (例: 40.0f ~ 100.0f)
+	const float STAGE_TILE_LENGTH = 260.0f;
+
+	// ★変更: 表示するステージタイルの枚数を増やす（ループさせるため）
+	const int MAX_STAGE_TILES = 3;
+
+	// ステージ回転（ラジアン）
 	DirectX::XMFLOAT3 stageRotation = { 0.0f, 0.0f, 0.0f };
 	float player_anim_time = 0.0f;
 	int   player_anim_index = 0;
@@ -204,6 +200,8 @@ private:
 	void UpdateStages();
 	void CheckCollisions();
 	void InputAttack();
+	// 敵生成ヘルパー
+	void SpawnEnemy(float zPosition);
 
 	void calculate_frame_stats()
 	{

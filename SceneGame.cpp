@@ -26,19 +26,15 @@ void SceneGame::Initialize()
 	skinned_meshes[0] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\Run_main.cereal");
 
 	// 1: 敵 (Slime)
-
 	skinned_meshes[1] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\enemy.cereal");
 
 	// 2: ステージ床 (Stage)
-
 	skinned_meshes[2] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\main_stage.cereal");
 
-	// 3:  当たり判定BOX(BOX)
-
+	// 3: 当たり判定BOX
 	skinned_meshes[3] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\cube.000.fbx");
 
-	// 3:  障害物
-
+	// 4: 障害物 (Vegetable/Rock)
 	skinned_meshes[4] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\Vegetable.fbx");
 
 	sprite_batches[0] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\fontS.png", 1);
@@ -49,6 +45,7 @@ void SceneGame::Initialize()
 
 	bgmGame = Audio::Instance().LoadAudioSource(".\\resources\\スティックマンの冒険.wav");
 
+	// スケール設定
 	playerScale = { 0.01f, 0.01f, 0.01f };
 	enemyScale = { 0.01f, 0.01f, 0.01f };
 	stageScale = { 0.3f, 0.3f, 0.3f };
@@ -73,28 +70,18 @@ void SceneGame::Initialize()
 	// ---------------------------------------------------------
 	// ステージ・敵の初期配置
 	// ---------------------------------------------------------
+	stages.clear();
+	enemies.clear();
+
 	for (int i = 0; i < MAX_STAGE_TILES; ++i)
 	{
 		StageObject s;
 		s.position = { 0, 0, i * STAGE_TILE_LENGTH };
 		stages.push_back(s);
 
-		if (i > 5)
-		{
-			// 確率で敵か岩を配置
-			if (rand() % 3 == 0)
-			{
-				Enemy e;
-				int lane = (rand() % 3) - 1;
-				e.position = { lane * player.laneWidth, 0, i * STAGE_TILE_LENGTH };
-				e.isAlive = true;
-
-				// 0,1:敵, 2:岩
-				e.type = rand() % 3;
-
-				enemies.push_back(e);
-			}
-		}
+		// ★変更点: i > 1 の条件を外し、最初のタイルから敵生成を試みる
+		// ただしSpawnEnemy内でスタート地点付近(z < 25)は弾くようにする
+		SpawnEnemy(s.position.z);
 	}
 }
 
@@ -135,8 +122,6 @@ void SceneGame::Update(float elapsedTime)
 
 		goalTimer += elapsedTime;
 
-		//UpdateCamera(); // 固定カメラ or GOALカメラ
-
 		if (goalTimer >= 5.0f)
 		{
 			SceneManager::instance().ChangeScene(new SceneEnd(fw_, gameTime, defeatedCount));
@@ -155,8 +140,6 @@ void SceneGame::Update(float elapsedTime)
 
 	// 衝突判定
 	CheckCollisions();
-
-	// ライトパラメータ更新
 }
 
 void SceneGame::UpdatePlayer(float elaspedTime)
@@ -362,6 +345,43 @@ void SceneGame::InputAttack()
 	prevRButton = nowRButton;
 }
 
+// 敵生成ヘルパー関数
+void SceneGame::SpawnEnemy(float zPosition)
+{
+	// 1つのステージパネル(長さ約60)の中に、間隔を詰めて配置判定を行う
+	float interval = 20.0f;
+	int count = static_cast<int>(STAGE_TILE_LENGTH / interval);
+
+	for (int i = 0; i < count; ++i)
+	{
+		
+		if (rand() % 10 < 8)
+		{
+			Enemy e;
+			int lane = (rand() % 3) - 1;
+
+			// Z位置を計算
+			float zOffset = (i * interval) + (static_cast<float>(rand() % 40) / 10.0f);
+			e.position = { lane * player.laneWidth, 0, zPosition + zOffset };
+
+		
+			if (e.position.z < 25.0f) continue;
+
+			e.isAlive = true;
+
+			// アニメーション設定
+			if (skinned_meshes[1] && !skinned_meshes[1]->animation_clips.empty()) {
+				e.keyframe = skinned_meshes[1]->animation_clips[0].sequence[0];
+			}
+
+			// 0,1:敵, 2:岩
+			e.type = rand() % 3;
+
+			enemies.push_back(e);
+		}
+	}
+}
+
 void SceneGame::UpdateStages()
 {
 	float playerZ = player.position.z;
@@ -369,10 +389,12 @@ void SceneGame::UpdateStages()
 	if (!stages.empty())
 	{
 		StageObject& firstStage = stages.front();
-		// プレイヤーより後ろになったら前に移動
-		if (firstStage.position.z < playerZ - STAGE_TILE_LENGTH * 2)
+
+		// プレイヤーがステージ1枚分以上進んだら、一番後ろのステージを一番前に持ってくる
+		if (firstStage.position.z < playerZ - STAGE_TILE_LENGTH * 1.5f)
 		{
 			StageObject& lastStage = stages.back();
+
 			float nextZ = lastStage.position.z + STAGE_TILE_LENGTH;
 
 			firstStage.position.z = nextZ;
@@ -380,27 +402,16 @@ void SceneGame::UpdateStages()
 			stages.push_back(firstStage);
 			stages.erase(stages.begin());
 
-			// 新しい敵の配置
-			if (rand() % 3 == 0)
-			{
-				Enemy e;
-				int lane = (rand() % 3) - 1;
-				e.position = { lane * player.laneWidth, 0, nextZ };
-				e.isAlive = true;
-				// アニメーション初期化
-				skinned_meshes[1]->update_animation(e.keyframe);
-				// ランダムでタイプ決定 (0:赤, 1:青, 2:岩)
-				e.type = rand() % 3;
-				enemies.push_back(e);
-			}
+			// 新しいステージに合わせて敵・障害物を生成
+			SpawnEnemy(nextZ);
 		}
 	}
 
-	// 通り過ぎた敵の削除
+	// プレイヤーより遥か後ろに行った敵の削除
 	auto it = enemies.begin();
 	while (it != enemies.end())
 	{
-		if (it->position.z < playerZ - 10.0f || !it->isAlive)
+		if (it->position.z < playerZ - 20.0f || !it->isAlive)
 		{
 			it = enemies.erase(it);
 		}
@@ -482,7 +493,6 @@ void SceneGame::Render()
 
 	DirectX::XMStoreFloat4x4(&fw_->data.view_projection, V * P);
 	fw_->data.light_direction = fw_->light_direction;
-	//fw_->data.camera_position = DirectX::XMFLOAT4(camera_position.x, camera_position.y, camera_position.z, 1.0f);
 
 	fw_->immediate_context->UpdateSubresource(fw_->constant_buffers[0].Get(), 0, 0, &fw_->data, 0, 0);
 	fw_->immediate_context->VSSetConstantBuffers(1, 1, fw_->constant_buffers[0].GetAddressOf());
@@ -494,7 +504,7 @@ void SceneGame::Render()
 { -1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1 },	// 2:RHS Z-UP
 { 1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1 },		// 3:LHS Z-UP
 	};
-	const float scale_factor = 1.0f; // To change the units from centimeters to meters, set 'scale_factor' to 0.01.
+	const float scale_factor = 1.0f;
 
 	DirectX::XMMATRIX C{ DirectX::XMLoadFloat4x4(&coordinate_system_transforms[0]) * DirectX::XMMatrixScaling(scale_factor, scale_factor, scale_factor) };
 
@@ -526,9 +536,8 @@ void SceneGame::Render()
 	}
 
 	// -----------------------------------------------------------
-	// 敵描画
+	// 敵・障害物描画
 	// -----------------------------------------------------------
-	// 敵 & 岩 (ここで分岐)
 	if (skinned_meshes[1] && skinned_meshes[4])
 	{
 		for (const auto& enemy : enemies)
@@ -540,7 +549,7 @@ void SceneGame::Render()
 			// 岩(2)か、敵(0,1)かで描画メッシュを変える
 			if (enemy.type == 2)
 			{
-				// 岩の描画
+				// 岩(障害物)の描画
 				DirectX::XMMATRIX S = DirectX::XMMatrixScaling(rockScale.x, rockScale.y, rockScale.z);
 				DirectX::XMFLOAT4X4 world;
 				DirectX::XMStoreFloat4x4(&world, C * S * T); // 回転なし
@@ -595,28 +604,21 @@ void SceneGame::Render()
 	fw_->framebuffers[0]->deactivate(fw_->immediate_context.Get());
 	if (fw_->enable_bloom)
 	{
-		// Bloom 作成（抽出 + Blur 済みテクスチャ生成）
 		fw_->bloomer->make(fw_->immediate_context.Get(), fw_->framebuffers[0]->shader_resource_views[0].Get());
 
-		// Bloom 合成用フレームバッファ
 		fw_->framebuffers[1]->clear(fw_->immediate_context.Get());
 		fw_->framebuffers[1]->activate(fw_->immediate_context.Get());
 
 		fw_->immediate_context->OMSetDepthStencilState(fw_->depth_stencil_states[static_cast<size_t>(DEPTH_STATE::ZT_OFF_ZW_OFF)].Get(), 0);
-
 		fw_->immediate_context->RSSetState(fw_->rasterizer_states[static_cast<size_t>(RASTER_STATE::CULL_NONE)].Get());
-
 		fw_->immediate_context->OMSetBlendState(fw_->blend_states[static_cast<size_t>(BLEND_STATE::ALPHA)].Get(), nullptr, 0xFFFFFFFF);
 		ID3D11ShaderResourceView* bloom_srvs[] =
 		{
-			fw_->framebuffers[0]->shader_resource_views[0].Get(), // Scene
-			fw_->bloomer->shader_resource_view(),                  // Bloom
+			fw_->framebuffers[0]->shader_resource_views[0].Get(),
+			fw_->bloomer->shader_resource_view(),
 		};
 
-		// FINAL PASS（Bloom 合成）
 		fw_->bit_block_transfer->blit(fw_->immediate_context.Get(), bloom_srvs, 0, 2, fw_->pixel_shaders[2].Get());
-		fw_->framebuffers[1]->deactivate(fw_->immediate_context.Get());
-
 		fw_->framebuffers[1]->deactivate(fw_->immediate_context.Get());
 	}
 
@@ -624,26 +626,21 @@ void SceneGame::Render()
 	if (fw_->enable_radial_blur)
 	{
 		fw_->immediate_context->OMSetDepthStencilState(fw_->depth_stencil_states[static_cast<size_t>(DEPTH_STATE::ZT_OFF_ZW_OFF)].Get(), 0);
-
 		fw_->immediate_context->RSSetState(fw_->rasterizer_states[static_cast<size_t>(RASTER_STATE::CULL_NONE)].Get());
 
 		ID3D11ShaderResourceView* blur_srvs[] =
 		{
-			fw_->framebuffers[1]->shader_resource_views[0].Get() // Bloom 後
+			fw_->framebuffers[1]->shader_resource_views[0].Get()
 		};
 
-		// BLUR PASS
 		fw_->bit_block_transfer->blit(fw_->immediate_context.Get(), blur_srvs, 0, 1, fw_->pixel_shaders[0].Get());
 	}
 	else
 	{
-		// Blur なし → Bloom 結果をそのまま出力
 		fw_->bit_block_transfer->blit(fw_->immediate_context.Get(), fw_->framebuffers[1]->shader_resource_views[0].GetAddressOf(), 0, 1, fw_->pixel_shaders[2].Get());
 	}
 
 	int speed = static_cast<int>(player.moveSpeed / P_ACCELE);
-	//int speed = static_cast<int>(player.moveSpeed / 2.5f);
-
 	DrawNumber(speed, 200, 30, 0.6f, fw_->immediate_context.Get());
 }
 
@@ -739,15 +736,15 @@ void SceneGame::DrawNumber(int number, float x, float y, float scale, ID3D11Devi
 		sprite_batches[0]->begin(fw_->immediate_context.Get());
 		sprite_batches[0]->render(
 			ctx,
-			posX, y,         // 描画位置
-			cellW * scale, cellH * scale,    // 描画サイズ
-			1, 1, 1, 1,         // 色
-			0.0f,            // 回転
+			posX, y,
+			cellW * scale, cellH * scale,
+			1, 1, 1, 1,
+			0.0f,
 			sx, sy,
-			sw, sh   // 切り出し範囲 ←ここが重要!!
+			sw, sh
 		);
 		sprite_batches[0]->end(fw_->immediate_context.Get());
 
-		posX += cellW / 2; // 次の桁へ移動
+		posX += cellW / 2;
 	}
 }
