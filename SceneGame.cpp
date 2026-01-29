@@ -32,10 +32,10 @@ void SceneGame::Initialize()
 	skinned_meshes[2] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\main_stage.cereal");
 
 	// 3: 当たり判定BOX
-	skinned_meshes[3] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\cube.000.fbx");
+	skinned_meshes[3] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\cube.000.cereal");
 
 	// 4: 障害物 (Vegetable/Rock)
-	skinned_meshes[4] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\Vegetable.fbx");
+	skinned_meshes[4] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\Vegetable.cereal");
 
 	sprite_batches[0] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\fontS.png", 1);
 
@@ -57,7 +57,7 @@ void SceneGame::Initialize()
 	player.isGround = true;
 	player.knockbackTimer = 0.0f;
 	player.knockbackVelocityZ = 0.0f;
-	player.moveSpeed = 15.0f;
+	player.moveSpeed = (P_ACCELE * 3);
 
 	gameTime = 0.0f;
 
@@ -275,7 +275,7 @@ void SceneGame::InputAttack()
 	}
 	if (attack_hit_enable)
 	{
-		const float attackRange = 20.0f;
+		const float attackRange = 8.0f;
 		const float laneThreshold = 2.5f;
 		Boxes.length = attackRange;
 
@@ -312,7 +312,7 @@ void SceneGame::InputAttack()
 				if (distZ > 0.0f && distZ < attackRange)
 				{
 					enemy.isAlive = false;
-					player.moveSpeed += 2.5f;
+					player.moveSpeed += P_ACCELE;
 					defeatedCount++;
 					if (attack_type == AttackType::Right)
 					{
@@ -332,8 +332,8 @@ void SceneGame::InputAttack()
 	if (attack_state)
 	{
 		attack_timer++;
-		if (attack_timer == 30) attack_hit_enable = false;
-		if (attack_timer >= 60)
+		if (attack_timer == 20) attack_hit_enable = false;
+		if (attack_timer >= 30)
 		{
 			attack_state = false;
 			attack_type = AttackType::None;
@@ -349,7 +349,7 @@ void SceneGame::InputAttack()
 void SceneGame::SpawnEnemy(float zPosition)
 {
 	// 1つのステージパネル(長さ約60)の中に、間隔を詰めて配置判定を行う
-	float interval = 20.0f;
+	float interval = 23.0f;
 	int count = static_cast<int>(STAGE_TILE_LENGTH / interval);
 
 	for (int i = 0; i < count; ++i)
@@ -460,7 +460,7 @@ void SceneGame::CheckCollisions()
 			// 敵でも岩でもぶつかったらノックバック
 			player.knockbackVelocityZ = -30.0f;
 			player.knockbackTimer = 2.5f;
-			player.moveSpeed = 15.0f;
+			player.moveSpeed = (P_ACCELE * 3);
 		}
 	}
 }
@@ -560,13 +560,14 @@ void SceneGame::Render()
 			else
 			{
 				// 敵の描画
+				//DirectX::XMmatrix3rota
 				DirectX::XMMATRIX R = DirectX::XMMatrixRotationY(DirectX::XMConvertToRadians(180));
 				DirectX::XMMATRIX S = DirectX::XMMatrixScaling(enemyScale.x, enemyScale.y, enemyScale.z);
 				DirectX::XMFLOAT4X4 world;
 				DirectX::XMStoreFloat4x4(&world, C * S * R * T);
 
-				DirectX::XMFLOAT4 enemyColor = (enemy.type == 0) ? DirectX::XMFLOAT4(1, 0.5f, 0.5f, 1) : DirectX::XMFLOAT4(0.5f, 0.5f, 1, 1);
-				skinned_meshes[1]->render(fw_->immediate_context.Get(), world, enemyColor, &enemy.keyframe);
+				DirectX::XMFLOAT4 enemyColor = (enemy.type == 0) ? DirectX::XMFLOAT4(1, 0.0f, 0.0f, 1) : DirectX::XMFLOAT4(0.0f, 0.0f, 1, 1);
+				skinned_meshes[1]->render(fw_->immediate_context.Get(), world, enemyColor, &enemy.keyframe, true);
 			}
 		}
 	}

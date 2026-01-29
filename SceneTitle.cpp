@@ -118,6 +118,8 @@ void SceneTitle::Update(float elaspedTime)
 		SceneManager::instance().ChangeScene(new SceneLoading(new SceneGame(hwnd, fw_), fw_));
 		return;
 	}
+
+	if (GetAsyncKeyState('T') & 0x8000) { SceneManager::instance().ChangeScene(new SceneTutorial(hwnd, fw_));	return; }
 	const float hue_speed = 0.1f;
 	const float breathe_speed = 1.0f;
 	const float fixed_pulse = 0.8f;

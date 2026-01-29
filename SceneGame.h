@@ -6,7 +6,7 @@
 #include <memory>
 #include "skinned_mesh.h"
 
-#define P_ACCELE 2.5f
+#define P_ACCELE 5.0f
 
 class SceneGame : public Scene
 {
