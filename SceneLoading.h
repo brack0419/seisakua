@@ -58,4 +58,7 @@ private:
 	float elapsed_time{ 0.0f };
 	float current_fps{ 0.0f };
 	float current_frame_time{ 0.0f };
+	float object1_anim_time = 0.0f;
+	int object1_anim_index = 0;
+	animation::keyframe object1_keyframe{};
 };

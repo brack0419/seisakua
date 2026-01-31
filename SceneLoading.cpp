@@ -6,10 +6,6 @@
 
 SceneLoading::SceneLoading(Scene* nextScene, framework* fw) : nextScene(nextScene), fw_(fw)
 {
-	if (!fw_) {
-		MessageBox(nullptr, L"fw_ が nullptr です", L"Error", MB_OK);
-		return;
-	}
 }
 
 //初期化
@@ -18,10 +14,17 @@ void SceneLoading::Initialize()
 	HRESULT hr{ S_OK };
 
 	//スプライト初期化
-	skinned_meshes[1] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\crown.cereal");
+	skinned_meshes[1] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\cat.cereal");
 
 	//スレッド開始
 	thread = new std::thread(LoadingThread, this);
+
+	ShowCursor(false);
+	fw_->distance = 20.0f;
+
+	fw_->camera_position.x = 7.712f;
+	fw_->camera_position.y = -0.130f;
+	fw_->camera_position.z = -28.445f;
 }
 
 //終了化
@@ -57,63 +60,43 @@ void SceneLoading::Update(float elapsedTime)
 		SceneManager::instance().ChangeScene(nextScene);
 		nextScene = nullptr;
 	}
+
+	if (!skinned_meshes[1]->animation_clips.empty())
+	{
+		animation& anim = skinned_meshes[1]->animation_clips[object1_anim_index];
+
+		object1_anim_time += elapsedTime;
+
+		int frame = static_cast<int>(object1_anim_time * anim.sampling_rate);
+		if (frame >= static_cast<int>(anim.sequence.size()))
+		{
+			frame = 0;
+			object1_anim_time = 0.0f;
+		}
+
+		object1_keyframe = anim.sequence[frame];
+	}
 }
 
 //描画処理
 void SceneLoading::Render()
 {
-	// DYNAMIC_TEXTURE
-	fw_->data.elapsed_time = elapsed_time;
-	fw_->data.time += elapsed_time;
-
-	fw_->immediate_context->UpdateSubresource(fw_->constant_buffers[0].Get(), 0, 0, &fw_->data, 0, 0);
-	fw_->immediate_context->VSSetConstantBuffers(1, 1, fw_->constant_buffers[0].GetAddressOf());
-
-	fw_->immediate_context->PSSetConstantBuffers(1, 1, fw_->constant_buffers[0].GetAddressOf());
-
-	fw_->immediate_context->UpdateSubresource(fw_->constant_buffers[1].Get(), 0, 0, &fw_->parametric_constants, 0, 0);
-	fw_->immediate_context->PSSetConstantBuffers(2, 1, fw_->constant_buffers[1].GetAddressOf());
-
-	// DYNAMIC_TEXTURE
-	if (fw_->enable_dynamic_shader)
-	{
-		fw_->dynamic_texture->clear(fw_->immediate_context.Get());
-		fw_->dynamic_texture->activate(fw_->immediate_context.Get());
-		fw_->immediate_context->OMSetDepthStencilState(depth_stencil_states[static_cast<size_t>(DEPTH_STATE::ZT_OFF_ZW_OFF)].Get(), 0);
-		fw_->immediate_context->RSSetState(rasterizer_states[static_cast<size_t>(RASTER_STATE::CULL_NONE)].Get());
-		fw_->bit_block_transfer->blit(fw_->immediate_context.Get(), nullptr, 0, 0, effect_shaders[0].Get());
-		fw_->dynamic_texture->deactivate(fw_->immediate_context.Get());
-		fw_->immediate_context->PSSetShaderResources(15, 1, fw_->dynamic_texture->shader_resource_views[0].GetAddressOf());
-	}
-	else
-	{
-		ID3D11ShaderResourceView* null_srv[] = { nullptr };
-		fw_->immediate_context->PSSetShaderResources(15, 1, null_srv);
-	}
-
-	// RADIAL_BLUR
-	if (fw_->enable_radial_blur)
-	{
-		fw_->immediate_context->UpdateSubresource(fw_->constant_buffers[1].Get(), 0, 0, &fw_->radial_blur_data, 0, 0);
-		fw_->immediate_context->PSSetConstantBuffers(2, 1, fw_->constant_buffers[1].GetAddressOf());
-	}
+	using namespace DirectX;
 
 	fw_->framebuffers[0]->clear(fw_->immediate_context.Get());
 	fw_->framebuffers[0]->activate(fw_->immediate_context.Get());
 
-	// DYNAMIC_BACKGROUND
-	if (fw_->enable_dynamic_background)
-	{
-		fw_->immediate_context->OMSetDepthStencilState(fw_->depth_stencil_states[static_cast<size_t>(DEPTH_STATE::ZT_OFF_ZW_OFF)].Get(), 0);
-		fw_->immediate_context->RSSetState(fw_->rasterizer_states[static_cast<size_t>(RASTER_STATE::CULL_NONE)].Get());
-		fw_->immediate_context->OMSetBlendState(fw_->blend_states[static_cast<size_t>(BLEND_STATE::NONE)].Get(), nullptr, 0xFFFFFFFF);
-		fw_->bit_block_transfer->blit(fw_->immediate_context.Get(), nullptr, 0, 0, fw_->effect_shaders[1].Get());
-	}
-
-	fw_->immediate_context->OMSetDepthStencilState(fw_->depth_stencil_states[static_cast<size_t>(DEPTH_STATE::ZT_ON_ZW_ON)].Get(), 0);
-	fw_->immediate_context->RSSetState(fw_->rasterizer_states[static_cast<size_t>(RASTER_STATE::SOLID)].Get());
-
-	fw_->immediate_context->OMSetBlendState(fw_->blend_states[static_cast<size_t>(BLEND_STATE::ALPHA)].Get(), nullptr, 0xFFFFFFFF);
+	fw_->immediate_context->OMSetDepthStencilState(
+		fw_->depth_stencil_states[static_cast<size_t>(DEPTH_STATE::ZT_ON_ZW_ON)].Get(), 0
+	);
+	fw_->immediate_context->RSSetState(
+		fw_->rasterizer_states[static_cast<size_t>(RASTER_STATE::SOLID)].Get()
+	);
+	fw_->immediate_context->OMSetBlendState(
+		fw_->blend_states[static_cast<size_t>(BLEND_STATE::ALPHA)].Get(),
+		nullptr,
+		0xFFFFFFFF
+	);
 
 	const DirectX::XMFLOAT4X4 coordinate_system_transforms[]{
 { -1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 },	// 0:RHS Y-UP
@@ -149,7 +132,7 @@ void SceneLoading::Render()
 		DirectX::XMStoreFloat4x4(&world, C * Scale * R * T);
 		bool prev_flat = fw_->flat_shading;
 		fw_->flat_shading = true; // Object3 はフラット描画
-		skinned_meshes[1]->render(fw_->immediate_context.Get(), world, fw_->material_color, nullptr, fw_->flat_shading); // Loadingには入っているが、モデルが出てこない
+		skinned_meshes[1]->render(fw_->immediate_context.Get(), world, fw_->material_color, &object1_keyframe, fw_->flat_shading);
 		fw_->flat_shading = prev_flat;
 	}
 
@@ -157,35 +140,65 @@ void SceneLoading::Render()
 
 	if (fw_->enable_bloom)
 	{
-		// BLOOM
-		fw_->bloomer->make(fw_->immediate_context.Get(), fw_->framebuffers[0]->shader_resource_views[0].Get());
+		fw_->bloomer->make(
+			fw_->immediate_context.Get(),
+			fw_->framebuffers[0]->shader_resource_views[0].Get()
+		);
 
-		fw_->immediate_context->OMSetDepthStencilState(fw_->depth_stencil_states[static_cast<size_t>(DEPTH_STATE::ZT_OFF_ZW_OFF)].Get(), 0);
-		fw_->immediate_context->RSSetState(fw_->rasterizer_states[static_cast<size_t>(RASTER_STATE::CULL_NONE)].Get());
-		fw_->immediate_context->OMSetBlendState(fw_->blend_states[static_cast<size_t>(BLEND_STATE::ALPHA)].Get(), nullptr, 0xFFFFFFFF);
-		ID3D11ShaderResourceView* shader_resource_views[] =
+		fw_->framebuffers[1]->clear(fw_->immediate_context.Get());
+		fw_->framebuffers[1]->activate(fw_->immediate_context.Get());
+
+		fw_->immediate_context->OMSetDepthStencilState(
+			fw_->depth_stencil_states[static_cast<size_t>(DEPTH_STATE::ZT_OFF_ZW_OFF)].Get(), 0
+		);
+		fw_->immediate_context->RSSetState(
+			fw_->rasterizer_states[static_cast<size_t>(RASTER_STATE::CULL_NONE)].Get()
+		);
+		fw_->immediate_context->OMSetBlendState(
+			fw_->blend_states[static_cast<size_t>(BLEND_STATE::ALPHA)].Get(),
+			nullptr,
+			0xFFFFFFFF
+		);
+
+		ID3D11ShaderResourceView* bloom_srvs[] =
 		{
 			fw_->framebuffers[0]->shader_resource_views[0].Get(),
-			fw_->bloomer->shader_resource_view(),
+			fw_->bloomer->shader_resource_view()
 		};
-		fw_->bit_block_transfer->blit(fw_->immediate_context.Get(), shader_resource_views, 0, 2, fw_->pixel_shaders[0].Get());
+
+		fw_->bit_block_transfer->blit(
+			fw_->immediate_context.Get(),
+			bloom_srvs,
+			0,
+			2,
+			fw_->pixel_shaders[2].Get()
+		);
+
+		fw_->framebuffers[1]->deactivate(fw_->immediate_context.Get());
 	}
 
 	if (fw_->enable_radial_blur)
 	{
-		// RADIAL_BLUR
-		fw_->immediate_context->OMSetDepthStencilState(fw_->depth_stencil_states[static_cast<size_t>(DEPTH_STATE::ZT_OFF_ZW_OFF)].Get(), 0);
-		fw_->immediate_context->RSSetState(fw_->rasterizer_states[static_cast<size_t>(RASTER_STATE::CULL_NONE)].Get());
-		ID3D11ShaderResourceView* shader_resource_views[]{ fw_->framebuffers[0]->shader_resource_views[0].Get() };
-		fw_->bit_block_transfer->blit(fw_->immediate_context.Get(), shader_resource_views, 0, _countof(shader_resource_views), fw_->pixel_shaders[0].Get());
-	}
+		fw_->immediate_context->OMSetDepthStencilState(
+			fw_->depth_stencil_states[static_cast<size_t>(DEPTH_STATE::ZT_OFF_ZW_OFF)].Get(), 0
+		);
+		fw_->immediate_context->RSSetState(
+			fw_->rasterizer_states[static_cast<size_t>(RASTER_STATE::CULL_NONE)].Get()
+		);
 
-	//fw_->framebuffers[1]->clear(fw_->immediate_context.Get());
-	//fw_->framebuffers[1]->activate(fw_->immediate_context.Get());
-	fw_->immediate_context->OMSetDepthStencilState(fw_->depth_stencil_states[static_cast<size_t>(DEPTH_STATE::ZT_OFF_ZW_OFF)].Get(), 0);
-	fw_->immediate_context->RSSetState(fw_->rasterizer_states[static_cast<size_t>(RASTER_STATE::CULL_NONE)].Get());
-	fw_->bit_block_transfer->blit(fw_->immediate_context.Get(), fw_->framebuffers[0]->shader_resource_views[0].GetAddressOf(), 0, 1, fw_->pixel_shaders[0].Get());
-	fw_->framebuffers[1]->deactivate(fw_->immediate_context.Get());
+		ID3D11ShaderResourceView* blur_srvs[] =
+		{
+			fw_->framebuffers[1]->shader_resource_views[0].Get()
+		};
+
+		fw_->bit_block_transfer->blit(
+			fw_->immediate_context.Get(),
+			blur_srvs,
+			0,
+			1,
+			fw_->pixel_shaders[0].Get()
+		);
+	}
 }
 
 //GUI描画

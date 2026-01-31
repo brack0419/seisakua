@@ -99,6 +99,10 @@ private:
 		int type = 0; // 0:赤, 1:青, 2:岩
 		animation::keyframe keyframe;
 		float animationTime = 0.0f;
+		bool isBlownAway = false;                 // 吹き飛び中フラグ
+		DirectX::XMFLOAT3 blowVelocity{ 0, 0, 0 }; // 吹き飛び速度
+		float blowAngleX = 0.0f;                  // 回転角度
+		float blowAngleY = 0.0f;
 	};
 	std::vector<Enemy> enemies;
 

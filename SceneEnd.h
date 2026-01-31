@@ -5,6 +5,7 @@
 #include "framework.h"
 #include "sprite.h" 
 #include "sprite_batch.h"
+#include "skybox.h" 
 
 
 //タイトルシーン
@@ -53,6 +54,18 @@ public:
 
 	bool flat_shading = false;
 
+	struct scene_constants
+	{
+		DirectX::XMFLOAT4X4 view_projection;
+		DirectX::XMFLOAT4 light_direction;
+
+		// DYNAMIC_TEXTURE
+		float time = 0;
+		float elapsed_time = 0;
+		float pads[2];
+	};
+	scene_constants data{};
+
 	DirectX::XMFLOAT2 timePosition = { 1325.0f,404.0f };
 
 	float timeScale = 0.22f;
@@ -64,7 +77,8 @@ public:
 	DirectX::XMFLOAT2 scorePosition = { 332.0f, 386.0f };
 	float scoreScale = 0.33f;
 
-	DirectX::XMFLOAT4 camera_position{ 0.0f, 0.0f, -10.0f, 1.0f };
+	DirectX::XMFLOAT3 camera_position{ 0.0f, 0.0f, -10.0f };
+	//DirectX::XMFLOAT4 camera_position{ 0.0f, 0.0f, -10.0f, 1.0f };
 	DirectX::XMFLOAT4 light_direction{ 0.0f, 0.0f, 1.0f, 0.0f };
 	DirectX::XMFLOAT3 camera_focus{ 0.0f, 0.283f, -10.0f };
 	float rotateX{ DirectX::XMConvertToRadians(5) };
@@ -90,9 +104,16 @@ public:
 	DirectX::XMFLOAT3 rotation_object4{ 0.0f, 1.4f, 0.0f };
 	DirectX::XMFLOAT3 translation_object4{ -17.0f, -20.0f, 26.0f };
 
+	// End_building3
+	DirectX::XMFLOAT4 material_color3{ 1 ,1, 1, 1 };
+	DirectX::XMFLOAT3 rotation_object5{ 0.0f, 1.4f, 0.0f };
+	DirectX::XMFLOAT3 translation_object5{ -17.0f, -20.0f, 26.0f };
 
 	DirectX::XMFLOAT3 model_position_man{ 0.0f, 0.0f, 0.0f };
 	DirectX::XMFLOAT3 model_position_walk{ 0.0f, 0.0f, 0.0f };
+	DirectX::XMFLOAT3 skyboxPosition{ -22.2f, -5.9f, 54.6f };
+	DirectX::XMFLOAT3 skyboxRotation{ 0.0f, -5.1f, 3.1f };
+	float skyboxScale = 1.0f;
 
 	void DrawNumber(int number, float x, float y, float scale);
 
@@ -100,6 +121,9 @@ private:
 	framework* fw_;
 	high_resolution_timer tictoc;
 	uint32_t frames{ 0 };
+
+	std::unique_ptr<sky_map> skybox_;
+
 	float elapsed_time{ 0.0f };
 	float current_fps{ 0.0f };
 	float current_frame_time{ 0.0f };

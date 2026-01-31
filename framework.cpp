@@ -18,7 +18,9 @@ framework::framework(HWND hwnd) : hwnd(hwnd)
 bool framework::initialize()
 {
 	HRESULT hr{ S_OK };
-
+	hoverCursor = LoadCursorFromFileW(
+		L".\\resources\\stickman_cursor\\Stickman- link.ani"
+	);
 	// ADAPTER
 	IDXGIFactory* factory = nullptr;
 	CreateDXGIFactory(IID_PPV_ARGS(&factory));
@@ -272,7 +274,7 @@ bool framework::initialize()
 	rasterizer_desc.SlopeScaledDepthBias = 0;
 	rasterizer_desc.DepthClipEnable = TRUE;
 	rasterizer_desc.ScissorEnable = FALSE;
-	rasterizer_desc.MultisampleEnable = FALSE;
+	rasterizer_desc.MultisampleEnable = TRUE;
 	rasterizer_desc.AntialiasedLineEnable = FALSE;
 	hr = device->CreateRasterizerState(&rasterizer_desc, rasterizer_states[static_cast<size_t>(RASTER_STATE::SOLID)].GetAddressOf());
 	_ASSERT_EXPR(SUCCEEDED(hr), hr_trace(hr));
@@ -380,6 +382,8 @@ bool framework::initialize()
 
 void framework::update(float elapsed_time/*Elapsed seconds from last frame*/)
 {
+
+	SetCursor(hoverCursor);
 #ifdef USE_IMGUI
 	ImGui_ImplDX11_NewFrame();
 	ImGui_ImplWin32_NewFrame();

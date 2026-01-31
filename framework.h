@@ -49,6 +49,9 @@ CONST LPWSTR APPLICATION_NAME{ L"自由" };
 class framework
 {
 public:
+	HCURSOR hoverCursor = nullptr;
+	bool cursorSet = false;
+
 
 	CONST HWND hwnd;
 

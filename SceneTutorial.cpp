@@ -85,6 +85,32 @@ void SceneTutorial::Update(float elapsedTime)
 
 	UpdatePlayer(elapsedTime);
 	InputAttack();
+
+	//  吹き飛んでいる敵の更新処理
+	for (auto& enemy : enemies)
+	{
+		if (enemy.isBlownAway)
+		{
+			// 重力で落下させる
+			enemy.blowVelocity.y -= 40.0f * elapsedTime;
+
+			// 速度分移動させる
+			enemy.position.x += enemy.blowVelocity.x * elapsedTime;
+			enemy.position.y += enemy.blowVelocity.y * elapsedTime;
+			enemy.position.z += enemy.blowVelocity.z * elapsedTime;
+
+			// クルクル回転させる
+			enemy.blowAngleX += 720.0f * elapsedTime;
+			enemy.blowAngleY += 360.0f * elapsedTime;
+
+			// 地面よりだいぶ下（-20）まで落ちたら完全に消滅させる
+			if (enemy.position.y < -20.0f)
+			{
+				enemy.isAlive = false;
+			}
+		}
+	}
+
 	UpdateTutorialFlow(elapsedTime);
 	UpdateCamera();
 
@@ -93,7 +119,9 @@ void SceneTutorial::Update(float elapsedTime)
 	{
 		for (auto& enemy : enemies)
 		{
-			if (!enemy.isAlive) continue;
+			//  吹き飛び中(isBlownAway)は当たり判定を無視する
+			if (!enemy.isAlive || enemy.isBlownAway) continue;
+
 			float dx = enemy.position.x - player.position.x;
 			float dz = enemy.position.z - player.position.z;
 			if (sqrtf(dx * dx + dz * dz) < 1.5f && fabsf(player.position.y - enemy.position.y) < 2.0f)
@@ -113,7 +141,7 @@ void SceneTutorial::UpdateTutorialFlow(float elapsedTime)
 	switch (currentStep)
 	{
 	case TutorialStep::Welcome:
-		
+
 		if (stepTimer > 0.5f)
 		{
 			if (GetAsyncKeyState(VK_RETURN) & 0x8000)
@@ -147,6 +175,7 @@ void SceneTutorial::UpdateTutorialFlow(float elapsedTime)
 		if (player.position.y > 1.0f) actionDone = true;
 
 		// 障害物がプレイヤーの後ろに行ったら再生成
+		// 岩は吹き飛ばないので enemies[0] のチェックで問題ありません
 		if (enemies.empty() || enemies[0].position.z < player.position.z - 5.0f)
 		{
 			if (!enemies.empty()) enemies.clear();
@@ -172,14 +201,26 @@ void SceneTutorial::UpdateTutorialFlow(float elapsedTime)
 		// まだ条件未達成で、敵が通り過ぎてしまったら（またはいなくなったら）再生成
 		if (!actionDone)
 		{
-			bool needRespawn = false;
-			if (enemies.empty()) needRespawn = true;
-			else if (enemies[0].position.z < player.position.z - 5.0f) needRespawn = true;
+			//  「生きている」かつ「吹き飛んでいない」敵がまだ手前にいるかチェック
+			bool existsActiveEnemy = false;
+			for (const auto& e : enemies)
+			{
+				if (e.isAlive && !e.isBlownAway)
+				{
+					// プレイヤーより手前（あるいは少し後ろまで）にいるなら「まだウェーブ中」とみなす
+					if (e.position.z > player.position.z - 5.0f)
+					{
+						existsActiveEnemy = true;
+						break;
+					}
+				}
+			}
 
-			if (needRespawn)
+			// 有効な敵がいない（全滅させた or 全員通り過ぎた）場合は再生成
+			if (!existsActiveEnemy)
 			{
 				enemies.clear();
-				SpawnDummyEnemy(); // 再配置
+				SpawnDummyEnemy();
 			}
 		}
 
@@ -310,19 +351,31 @@ void SceneTutorial::InputAttack()
 		Boxes.length = 20.0f;
 		for (auto& enemy : enemies)
 		{
-			if (!enemy.isAlive || enemy.type == 2) continue; // 岩は壊せない
+			//  吹き飛び中も除外
+			if (!enemy.isAlive || enemy.isBlownAway || enemy.type == 2) continue; // 岩は壊せない
+
 			float distZ = enemy.position.z - player.position.z;
 			if (distZ > 0.0f && distZ < 20.0f && fabsf(enemy.position.x - player.position.x) < 2.5f)
 			{
 				if ((attack_type == 1 && enemy.type == 0) || (attack_type == 2 && enemy.type == 1))
 				{
-					enemy.isAlive = false;
+					// ここで吹き飛び処理を開始
+					enemy.isBlownAway = true;
+
+					// 上方向と奥方向へ飛ばす
+					float blowUp = 15.0f;
+					float blowForward = 25.0f;
+					// 殴った方向（左右）へも少し飛ばす (attack_type 2=Right(Blue Kick))
+					float blowSide = (attack_type == 2) ? 5.0f : -5.0f;
+
+					enemy.blowVelocity = { blowSide, blowUp, blowForward };
+
 					// 倒した敵の種類をカウント
 					if (enemy.type == 0) tutorialDefeatedRed++;
 					if (enemy.type == 1) tutorialDefeatedBlue++;
 
 					// 敵を倒すたびに速度アップ
-					player.moveSpeed += 2.0f;
+					player.moveSpeed += 5.0f;
 
 					if (attack_type == 1 && SE_PANCHI) SE_PANCHI->Play(false);
 					if (attack_type == 2 && SE_KICK) SE_KICK->Play(false);
@@ -398,7 +451,24 @@ void SceneTutorial::Render()
 			}
 			else // 敵
 			{
-				DirectX::XMStoreFloat4x4(&world, C * DirectX::XMMatrixScaling(0.01f, 0.01f, 0.01f) * DirectX::XMMatrixRotationY(DirectX::XM_PI) * DirectX::XMMatrixTranslation(e.position.x, e.position.y, e.position.z));
+				//  回転計算を追加
+				DirectX::XMMATRIX T = DirectX::XMMatrixTranslation(e.position.x, e.position.y, e.position.z);
+				DirectX::XMMATRIX R = DirectX::XMMatrixRotationY(DirectX::XM_PI);
+
+				// 吹き飛び中はグルグル回転させる
+				if (e.isBlownAway)
+				{
+					R *= DirectX::XMMatrixRotationRollPitchYaw(
+						DirectX::XMConvertToRadians(e.blowAngleX),
+						DirectX::XMConvertToRadians(e.blowAngleY),
+						0.0f
+					);
+				}
+
+				DirectX::XMMATRIX S = DirectX::XMMatrixScaling(0.01f, 0.01f, 0.01f);
+
+				DirectX::XMStoreFloat4x4(&world, C * S * R * T);
+
 				DirectX::XMFLOAT4 col = (e.type == 0) ? DirectX::XMFLOAT4(1, 0.5f, 0.5f, 1) : DirectX::XMFLOAT4(0.5f, 0.5f, 1, 1);
 				skinned_meshes[1]->render(fw_->immediate_context.Get(), world, col, &e.keyframe);
 			}
@@ -479,7 +549,7 @@ void SceneTutorial::DrawGUI()
 	case TutorialStep::Welcome:
 		ImGui::TextColored(ImVec4(1, 1, 0, 1), "Welcome to Tutorial!");
 		ImGui::Text("Let's learn how to play.");
-		ImGui::Text("Press [ENTER] to Start"); 
+		ImGui::Text("Press [ENTER] to Start");
 		break;
 	case TutorialStep::Move:
 		ImGui::TextColored(ImVec4(0, 1, 0, 1), "Step 1: MOVE");

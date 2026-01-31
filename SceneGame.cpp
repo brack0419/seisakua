@@ -5,8 +5,10 @@
 #include "SceneEnd.h"
 #include "framework.h"
 #include "SceneGame.h"
-#include <algorithm> // std::max, std::min
+#include <algorithm>   
 #include <cmath>
+#undef min
+#undef max
 
 float saveSpeed = 0.0f;
 
@@ -23,31 +25,31 @@ void SceneGame::Initialize()
 	// モデルの読み込み
 	// ---------------------------------------------------------
 
-	skinned_meshes[0] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\Run_main.cereal");
-
-	// 1: 敵 (Slime)
-	skinned_meshes[1] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\enemy.cereal");
-
-	// 2: ステージ床 (Stage)
+	skinned_meshes[0] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\player_run.cereal");
+	skinned_meshes[1] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\enemy_red.cereal");
 	skinned_meshes[2] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\main_stage.cereal");
-
-	// 3: 当たり判定BOX
 	skinned_meshes[3] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\cube.000.cereal");
+	skinned_meshes[4] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\Obstacles4.cereal");
+	skinned_meshes[5] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\enemy_blue_run.cereal");
+	skinned_meshes[6] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\player_slide.cereal");
+	skinned_meshes[7] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\player_attack3.cereal");
+	skinned_meshes[8] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\player_knocked1.cereal");
+	skinned_meshes[9] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\player_up3.cereal");
+	skinned_meshes[10] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\player_jump2.cereal");
+	skinned_meshes[11] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\enemy_red_kick.cereal");
 
-	// 4: 障害物 (Vegetable/Rock)
-	skinned_meshes[4] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\Vegetable.cereal");
 
 	sprite_batches[0] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\fontS.png", 1);
 
-	SE_PANCHI = Audio::Instance().LoadAudioSource(".\\resources\\panchi.wav");
-	SE_KICK = Audio::Instance().LoadAudioSource(".\\resources\\kick.wav");
-	SE_MISS = Audio::Instance().LoadAudioSource(".\\resources\\miss.wav");
-
-	bgmGame = Audio::Instance().LoadAudioSource(".\\resources\\スティックマンの冒険.wav");
+	auto& audio = Audio::Instance();
+	SE_PANCHI = audio.LoadAudioSource(".\\resources\\panchi.wav");
+	SE_KICK = audio.LoadAudioSource(".\\resources\\kick.wav");
+	SE_MISS = audio.LoadAudioSource(".\\resources\\miss.wav");
+	bgmGame = audio.LoadAudioSource(".\\resources\\スティックマンの冒険.wav");
 
 	// スケール設定
-	playerScale = { 0.01f, 0.01f, 0.01f };
-	enemyScale = { 0.01f, 0.01f, 0.01f };
+	playerScale = { 0.02f, 0.02f, 0.02f };
+	enemyScale = { 0.02f, 0.02f, 0.02f };
 	stageScale = { 0.3f, 0.3f, 0.3f };
 	rockScale = { 0.12f, 0.12f, 0.12f };
 
@@ -57,14 +59,18 @@ void SceneGame::Initialize()
 	player.isGround = true;
 	player.knockbackTimer = 0.0f;
 	player.knockbackVelocityZ = 0.0f;
-	player.moveSpeed = (P_ACCELE * 3);
+	player.moveSpeed = (P_ACCELE * 7);
 
 	gameTime = 0.0f;
 
 	fw_->light_direction = DirectX::XMFLOAT4{ 1.0f, -1.0f, 1.0f, 0.0f };
 
-	fw_->radial_blur_data.blur_strength = 0.1f;
-	fw_->radial_blur_data.blur_radius = 1.0f;
+	//fw_->radial_blur_data.blur_strength = 0.1f;
+	//fw_->radial_blur_data.blur_radius = 1.0f;
+	//fw_->radial_blur_data.blur_decay = 0.0f;
+
+	fw_->radial_blur_data.blur_strength = 0.0f;
+	fw_->radial_blur_data.blur_radius = 0.0f;
 	fw_->radial_blur_data.blur_decay = 0.0f;
 
 	// ---------------------------------------------------------
@@ -88,6 +94,9 @@ void SceneGame::Initialize()
 // 終了化
 void SceneGame::Finalize()
 {
+	for (auto& m : skinned_meshes) m.reset();
+	sprite_batches[0].reset();
+
 	if (bgmGame) {
 		bgmGame->Stop();
 		delete bgmGame;
@@ -98,6 +107,7 @@ void SceneGame::Finalize()
 // 更新処理
 void SceneGame::Update(float elapsedTime)
 {
+	ShowCursor(FALSE);
 	gameTime += elapsedTime;
 
 	if (saveSpeed <= player.moveSpeed)
@@ -131,12 +141,35 @@ void SceneGame::Update(float elapsedTime)
 
 	// 攻撃処理
 	InputAttack();
+	for (auto& enemy : enemies)
+	{
+		if (enemy.isBlownAway)
+		{
+			// 重力で落下させる
+			enemy.blowVelocity.y -= 40.0f * elapsedTime;
+
+			// 速度分移動させる
+			enemy.position.x += enemy.blowVelocity.x * elapsedTime;
+			enemy.position.y += enemy.blowVelocity.y * elapsedTime;
+			enemy.position.z += enemy.blowVelocity.z * elapsedTime;
+
+			// クルクル回転させる
+			enemy.blowAngleX += 720.0f * elapsedTime;
+			enemy.blowAngleY += 360.0f * elapsedTime;
+
+			// 地面よりだいぶ下（-20）まで落ちたら完全に消滅させる
+			if (enemy.position.y < -20.0f)
+			{
+				enemy.isAlive = false;
+			}
+		}
+	}
 
 	// ステージ管理（無限生成）
 	UpdateStages();
 
 	// カメラ更新
-	UpdateCamera();
+	UpdateCamera(elapsedTime);
 
 	// 衝突判定
 	CheckCollisions();
@@ -185,6 +218,9 @@ void SceneGame::UpdatePlayer(float elaspedTime)
 		{
 			player.velocity.y = player.jumpPower;
 			player.isGround = false;
+
+			isJumpAnim = true;
+			jump_anim_time = 0.0f;
 		}
 	}
 	else
@@ -230,18 +266,250 @@ void SceneGame::UpdatePlayer(float elaspedTime)
 	for (auto& enemy : enemies)
 	{
 		if (!enemy.isAlive) continue;
+		if (enemy.type == 2) continue; // 岩はアニメなし
 
-		enemy.animationTime += elaspedTime;
+		skinned_mesh* mesh = nullptr;
+		float* time = nullptr;
 
-		int frame = static_cast<int>(enemy.animationTime * anim.sampling_rate);
-
-		if (frame >= static_cast<int>(anim.sequence.size()))
+		// -----------------------------
+		// メッシュ＆時間の選択
+		// -----------------------------
+		if (enemy.type == 0)
 		{
-			frame = 0;
-			enemy.animationTime = 0.0f;
+			// 通常敵
+			if (enemy.isHitAnim)
+			{
+				mesh = skinned_meshes[11].get(); // ヒット
+				time = &enemy.hitAnimTime;
+			}
+			else
+			{
+				mesh = skinned_meshes[1].get();  // 通常
+				time = &enemy.animationTime;
+			}
+		}
+		else
+		{
+			// type != 0 は今まで通り mesh[5]
+			mesh = skinned_meshes[5].get();
+			time = &enemy.animationTime;
 		}
 
+		if (!mesh || mesh->animation_clips.empty()) continue;
+
+		animation& anim = mesh->animation_clips[0];
+
+		// -----------------------------
+		// 時間更新
+		// -----------------------------
+		*time += elaspedTime;
+
+		int frame = static_cast<int>((*time) * anim.sampling_rate);
+
+		// -----------------------------
+		// 再生終了処理
+		// -----------------------------
+		if (frame >= static_cast<int>(anim.sequence.size()))
+		{
+			if (enemy.type == 0 && enemy.isHitAnim)
+			{
+				// ヒット終了 → 通常へ
+				enemy.isHitAnim = false;
+				enemy.hitAnimTime = 0.0f;
+				enemy.animationTime = 0.0f;
+				continue;
+			}
+			else
+			{
+				// ループ
+				*time = 0.0f;
+				frame = 0;
+			}
+		}
+
+		// -----------------------------
+		// keyframe は1回だけ
+		// -----------------------------
 		enemy.keyframe = anim.sequence[frame];
+	}
+
+
+
+
+
+	// ===============================
+	// スライドアニメーション + ブラーフェード
+	// ===============================
+	if (isSlide && skinned_meshes[6] && !skinned_meshes[6]->animation_clips.empty())
+	{
+		// --- ブラー最大 ---
+		blurFade = 1.0f;
+
+		fw_->radial_blur_data.blur_strength = 0.1f * blurFade;
+		fw_->radial_blur_data.blur_radius = 1.0f * blurFade;
+		fw_->radial_blur_data.blur_decay = 0.0f;
+
+		slideTimer += elaspedTime;
+
+		animation& anim = skinned_meshes[6]->animation_clips[0];
+		slide_anim_time += elaspedTime;
+
+		int frame = static_cast<int>(slide_anim_time * anim.sampling_rate);
+		if (frame >= static_cast<int>(anim.sequence.size()))
+		{
+			frame = static_cast<int>(anim.sequence.size()) - 1;
+		}
+
+		player.keyframe = anim.sequence[frame];
+
+		const float SLIDE_DURATION = 1.5f;
+
+		if (slideTimer >= SLIDE_DURATION)
+		{
+			isSlide = false;
+			slideTimer = 0.0f;
+			slide_anim_time = 0.0f;
+		}
+
+		return; // ★ Runアニメを更新させない
+	}
+
+	// --- スライドしていない時：ブラーをなめらかに消す ---
+	blurFade -= elaspedTime * BLUR_FADE_SPEED;
+	blurFade = std::clamp(blurFade, 0.0f, 1.0f);
+
+	// ★ ease-out を適用
+	float eased = 1.0f - powf(1.0f - blurFade, 2.0f);
+
+	fw_->radial_blur_data.blur_strength = 0.2f * eased;
+	fw_->radial_blur_data.blur_radius = 2.0f * eased;
+	fw_->radial_blur_data.blur_decay = 0.0f;
+
+	// ===============================
+// Attackアニメーション（左クリック）
+// ===============================
+	if (isAttackAnim && skinned_meshes[7] && !skinned_meshes[7]->animation_clips.empty())
+	{
+		attackAnimTimer += elaspedTime;
+
+		animation& anim = skinned_meshes[7]->animation_clips[0];
+
+		// ★ ここだけ変更
+		const float ATTACK_ANIM_SPEED = 1.5f;
+		attack_anim_time += elaspedTime * ATTACK_ANIM_SPEED;
+
+		int frame = static_cast<int>(attack_anim_time * anim.sampling_rate);
+		if (frame >= static_cast<int>(anim.sequence.size()))
+		{
+			frame = static_cast<int>(anim.sequence.size()) - 1;
+		}
+
+		player.keyframe = anim.sequence[frame];
+
+		const float ATTACK_DURATION = 0.7f;
+
+		if (attackAnimTimer >= ATTACK_DURATION)
+		{
+			isAttackAnim = false;
+			attackAnimTimer = 0.0f;
+			attack_anim_time = 0.0f;
+		}
+
+		return;
+	}
+	// ===============================
+	// Knocked / Recover アニメーション
+	// ===============================
+	if (knockState != KnockState::None)
+	{
+		// ---------- Knocked ----------
+		if (knockState == KnockState::Knocked &&
+			skinned_meshes[8] &&
+			!skinned_meshes[8]->animation_clips.empty())
+		{
+			animation& anim = skinned_meshes[8]->animation_clips[0];
+
+			knocked_anim_time += elaspedTime * KNOCKED_ANIM_SPEED;
+			int frame = static_cast<int>(knocked_anim_time * anim.sampling_rate);
+
+			if (frame >= static_cast<int>(anim.sequence.size()) - 1)
+			{
+				// ★ 即 Recover に移行（止めない）
+				knockState = KnockState::Recover;
+				knocked_anim_time =
+					(knocked_anim_time * anim.sampling_rate -
+						(anim.sequence.size() - 1)) / anim.sampling_rate;
+			}
+			else
+			{
+				player.keyframe = anim.sequence[frame];
+				return;
+			}
+		}
+
+		// ---------- Recover ----------
+		if (knockState == KnockState::Recover &&
+			skinned_meshes[9] &&
+			!skinned_meshes[9]->animation_clips.empty())
+		{
+			animation& anim = skinned_meshes[9]->animation_clips[0];
+
+			knocked_anim_time += elaspedTime * RECOVER_ANIM_SPEED;
+			int frame = static_cast<int>(knocked_anim_time * anim.sampling_rate);
+
+			if (frame >= static_cast<int>(anim.sequence.size()))
+			{
+				knockState = KnockState::None;
+				knocked_anim_time =
+					(knocked_anim_time * anim.sampling_rate -
+						(anim.sequence.size() - 1)) / anim.sampling_rate;
+				return;
+			}
+
+			player.keyframe = anim.sequence[frame];
+			return;
+		}
+	}
+	if (knockBlurTimer > 0.0f)
+	{
+		knockBlurTimer -= elaspedTime;
+
+		float k = knockBlurTimer / 0.3f; // 1→0
+		fw_->radial_blur_data.blur_strength = 0.35f * k;
+		fw_->radial_blur_data.blur_radius = 1.5f * k;
+		fw_->radial_blur_data.blur_decay = 0.0f;
+	}
+	// ===============================
+	// Jump アニメーション（時間指定）
+	// ===============================
+	if (isJumpAnim && skinned_meshes[10] && !skinned_meshes[10]->animation_clips.empty())
+	{
+		animation& anim = skinned_meshes[10]->animation_clips[0];
+
+		const float JUMP_ANIM_DURATION = 1.0f; // ← ここで伸ばす！
+
+		jump_anim_time += elaspedTime;
+
+		// 0〜1 に正規化
+		float t = jump_anim_time / JUMP_ANIM_DURATION;
+		t = std::clamp(t, 0.0f, 1.0f);
+
+		int frame = static_cast<int>(t * anim.sequence.size());
+		if (frame >= static_cast<int>(anim.sequence.size()))
+		{
+			frame = static_cast<int>(anim.sequence.size()) - 1;
+		}
+
+		player.keyframe = anim.sequence[frame];
+
+		// 着地 or 再生完了
+		if (player.isGround || t >= 1.0f)
+		{
+			isJumpAnim = false;
+			jump_anim_time = 0.0f;
+		}
+
+		return;
 	}
 }
 
@@ -262,6 +530,10 @@ void SceneGame::InputAttack()
 			attack_type = AttackType::Left;
 			miss_played = false;
 			attack_c = { 1.0f, 0.0f, 0.0f, 1.0f };
+
+			isAttackAnim = true;
+			attackAnimTimer = 0.0f;
+			attack_anim_time = 0.0f;
 		}
 		else if (nowRButton && !prevRButton)
 		{
@@ -271,6 +543,11 @@ void SceneGame::InputAttack()
 			attack_type = AttackType::Right;
 			miss_played = false;
 			attack_c = { 0.0f, 0.0f, 1.0f, 1.0f };
+
+			// スライド開始
+			isSlide = true;
+			slideTimer = 0.0f;
+			slide_anim_time = 0.0f;
 		}
 	}
 	if (attack_hit_enable)
@@ -281,7 +558,8 @@ void SceneGame::InputAttack()
 
 		for (auto& enemy : enemies)
 		{
-			if (!enemy.isAlive) continue;
+			// 死んでいる、または既に吹き飛んでいる敵は無視
+			if (!enemy.isAlive || enemy.isBlownAway) continue;
 
 			// 岩(Type 2)は攻撃不可
 			if (enemy.type == 2) continue;
@@ -311,7 +589,17 @@ void SceneGame::InputAttack()
 				float distZ = enemy.position.z - player.position.z;
 				if (distZ > 0.0f && distZ < attackRange)
 				{
-					enemy.isAlive = false;
+					// ここで吹き飛び処理を開始
+					enemy.isBlownAway = true;
+
+					// 上方向と奥方向へ飛ばす
+					float blowUp = 20.0f;
+					float blowForward = 55.0f;
+					// 殴った方向（左右）へも少し飛ばす
+					float blowSide = (attack_type == AttackType::Right) ? 15.0f : -15.0f;
+
+					enemy.blowVelocity = { blowSide, blowUp, blowForward };
+
 					player.moveSpeed += P_ACCELE;
 					defeatedCount++;
 					if (attack_type == AttackType::Right)
@@ -350,11 +638,11 @@ void SceneGame::SpawnEnemy(float zPosition)
 {
 	// 1つのステージパネル(長さ約60)の中に、間隔を詰めて配置判定を行う
 	float interval = 23.0f;
+
 	int count = static_cast<int>(STAGE_TILE_LENGTH / interval);
 
 	for (int i = 0; i < count; ++i)
 	{
-		
 		if (rand() % 10 < 8)
 		{
 			Enemy e;
@@ -364,14 +652,18 @@ void SceneGame::SpawnEnemy(float zPosition)
 			float zOffset = (i * interval) + (static_cast<float>(rand() % 40) / 10.0f);
 			e.position = { lane * player.laneWidth, 0, zPosition + zOffset };
 
-		
 			if (e.position.z < 25.0f) continue;
 
 			e.isAlive = true;
 
 			// アニメーション設定
-			if (skinned_meshes[1] && !skinned_meshes[1]->animation_clips.empty()) {
+			if (e.type == 0 && skinned_meshes[1] && !skinned_meshes[1]->animation_clips.empty())
+			{
 				e.keyframe = skinned_meshes[1]->animation_clips[0].sequence[0];
+			}
+			else if (e.type == 1 && skinned_meshes[5] && !skinned_meshes[5]->animation_clips.empty())
+			{
+				e.keyframe = skinned_meshes[5]->animation_clips[0].sequence[0];
 			}
 
 			// 0,1:敵, 2:岩
@@ -422,7 +714,7 @@ void SceneGame::UpdateStages()
 	}
 }
 
-void SceneGame::UpdateCamera()
+void SceneGame::UpdateCamera(float elapsedTime)
 {
 	camera_focus = player.position;
 	camera_focus.y += 2.0f;
@@ -437,6 +729,26 @@ void SceneGame::UpdateCamera()
 
 	DirectX::XMVECTOR Eye = DirectX::XMVectorSubtract(Focus, Offset);
 	DirectX::XMStoreFloat3(&camera_position, Eye);
+	// --- Camera Shake ---
+	if (shakeTimer > 0.0f)
+	{
+		shakeTimer -= elapsedTime;
+
+		float t = shakeTimer * 20.0f;
+		float shakeX = (sinf(t * 12.3f)) * shakePower;
+		float shakeY = (cosf(t * 9.7f)) * shakePower;
+
+		camera_position.x += shakeX;
+		camera_position.y += shakeY;
+	}
+	// カメラ距離キック
+	if (cameraKickBack > 0.0f)
+	{
+		cameraKickBack -= elapsedTime * 8.0f;
+	}
+	cameraKickBack = (cameraKickBack < 0.0f) ? 0.0f : cameraKickBack;
+
+	Offset = DirectX::XMVectorScale(Offset, distance + cameraKickBack);
 }
 
 void SceneGame::CheckCollisions()
@@ -448,7 +760,8 @@ void SceneGame::CheckCollisions()
 
 	for (auto& enemy : enemies)
 	{
-		if (!enemy.isAlive) continue;
+		// 死んでいる、または吹き飛んでいる敵との衝突は無視する
+		if (!enemy.isAlive || enemy.isBlownAway) continue;
 
 		float dx = enemy.position.x - player.position.x;
 		float dz = enemy.position.z - player.position.z;
@@ -457,11 +770,23 @@ void SceneGame::CheckCollisions()
 
 		if (distXZ < hitRadius && dy < hitHeight)
 		{
-			// 敵でも岩でもぶつかったらノックバック
+			// プレイヤー側ノックバック（既存）
 			player.knockbackVelocityZ = -30.0f;
 			player.knockbackTimer = 2.5f;
 			player.moveSpeed = (P_ACCELE * 3);
+			player.moveSpeed = 15.0f;
+
+			// ★ 敵が赤(mesh[1])ならキック再生
+			if (enemy.type == 0)
+			{
+				enemy.animState = EnemyAnimState::Kick;
+				enemy.animationTime = 0.0f;
+			}
+
+			knockState = KnockState::Knocked;
+			knocked_anim_time = 0.0f;
 		}
+
 	}
 }
 
@@ -532,45 +857,103 @@ void SceneGame::Render()
 
 		DirectX::XMFLOAT4X4 world;
 		DirectX::XMStoreFloat4x4(&world, C * S * R * T);
-		skinned_meshes[0]->render(fw_->immediate_context.Get(), world, playerColor, &player.keyframe, true);
+		int meshIndex = 0;
+
+		if (knockState == KnockState::Knocked) meshIndex = 8;
+		else if (knockState == KnockState::Recover) meshIndex = 9;
+		else if (isSlide)                           meshIndex = 6;
+		else if (isAttackAnim)                      meshIndex = 7;
+		else if (isJumpAnim)                        meshIndex = 10;
+
+		auto* playerMesh = skinned_meshes[meshIndex].get();
+
+		playerMesh->render(
+			fw_->immediate_context.Get(),
+			world,
+			playerColor,
+			&player.keyframe,
+			false
+		);
 	}
 
 	// -----------------------------------------------------------
 	// 敵・障害物描画
 	// -----------------------------------------------------------
-	if (skinned_meshes[1] && skinned_meshes[4])
-	{
+	if (skinned_meshes[1] && skinned_meshes[4] && skinned_meshes[5])
 		for (const auto& enemy : enemies)
 		{
 			if (!enemy.isAlive) continue;
 
-			DirectX::XMMATRIX T = DirectX::XMMatrixTranslation(enemy.position.x, enemy.position.y, enemy.position.z);
+			DirectX::XMMATRIX T =
+				DirectX::XMMatrixTranslation(
+					enemy.position.x,
+					enemy.position.y,
+					enemy.position.z
+				);
 
-			// 岩(2)か、敵(0,1)かで描画メッシュを変える
+			// -----------------------------
+			// 岩 (type == 2)
+			// -----------------------------
 			if (enemy.type == 2)
 			{
-				// 岩(障害物)の描画
-				DirectX::XMMATRIX S = DirectX::XMMatrixScaling(rockScale.x, rockScale.y, rockScale.z);
-				DirectX::XMFLOAT4X4 world;
-				DirectX::XMStoreFloat4x4(&world, C * S * T); // 回転なし
+				DirectX::XMMATRIX S =
+					DirectX::XMMatrixScaling(
+						rockScale.x,
+						rockScale.y,
+						rockScale.z
+					);
 
-				// グレー色で描画
-				skinned_meshes[4]->render(fw_->immediate_context.Get(), world, { 0.4f, 0.4f, 0.4f, 1.0f }, nullptr, true);
+				DirectX::XMFLOAT4X4 world;
+				DirectX::XMStoreFloat4x4(&world, C * S * T);
+
+				skinned_meshes[4]->render(
+					fw_->immediate_context.Get(),
+					world,
+					{ 0.4f, 0.4f, 0.4f, 1.0f },
+					nullptr,
+					false
+				);
 			}
+			// -----------------------------
+			// 敵 (type == 0,1)
+			// -----------------------------
 			else
 			{
-				// 敵の描画
-				//DirectX::XMmatrix3rota
 				DirectX::XMMATRIX R = DirectX::XMMatrixRotationY(DirectX::XMConvertToRadians(180));
-				DirectX::XMMATRIX S = DirectX::XMMatrixScaling(enemyScale.x, enemyScale.y, enemyScale.z);
+				if (enemy.isBlownAway)
+				{
+					R *= DirectX::XMMatrixRotationRollPitchYaw(
+						DirectX::XMConvertToRadians(enemy.blowAngleX),
+						DirectX::XMConvertToRadians(enemy.blowAngleY),
+						0.0f
+					);
+				}
+
+				DirectX::XMMATRIX S =
+					DirectX::XMMatrixScaling(
+						enemyScale.x,
+						enemyScale.y,
+						enemyScale.z
+					);
+
 				DirectX::XMFLOAT4X4 world;
 				DirectX::XMStoreFloat4x4(&world, C * S * R * T);
 
-				DirectX::XMFLOAT4 enemyColor = (enemy.type == 0) ? DirectX::XMFLOAT4(1, 0.0f, 0.0f, 1) : DirectX::XMFLOAT4(0.0f, 0.0f, 1, 1);
-				skinned_meshes[1]->render(fw_->immediate_context.Get(), world, enemyColor, &enemy.keyframe, true);
+				// ★ ここが重要：タイプでメッシュ切り替え
+				auto* enemyMesh =
+					(enemy.animState == EnemyAnimState::Kick)
+					? skinned_meshes[11].get()
+					: skinned_meshes[enemy.type == 0 ? 1 : 5].get();
+
+				enemyMesh->render(
+					fw_->immediate_context.Get(),
+					world,
+					{ 1,1,1,1 },   // 色は共通でOK
+					&enemy.keyframe,
+					true
+				);
 			}
 		}
-	}
 
 	// -----------------------------------------------------------
 	// ステージ描画
@@ -643,6 +1026,12 @@ void SceneGame::Render()
 
 	int speed = static_cast<int>(player.moveSpeed / P_ACCELE);
 	DrawNumber(speed, 200, 30, 0.6f, fw_->immediate_context.Get());
+
+	int remainDistance = static_cast<int>(std::max(0.0f, GOAL_DISTANCE - player.position.z));
+
+	// 画面右上に距離を表示
+
+	DrawNumber(remainDistance, 1000, 30, 0.6f, fw_->immediate_context.Get());
 }
 
 void SceneGame::DrawGUI()

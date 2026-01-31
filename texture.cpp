@@ -17,7 +17,11 @@ using namespace std;
 #include <filesystem>
 #include <DDSTextureLoader.h>
 
+
+HRESULT make_dummy_texture(ID3D11Device* device, ID3D11ShaderResourceView** shader_resource_view, DWORD value, UINT dimension);
+
 static map<wstring, ComPtr<ID3D11ShaderResourceView>> resources;
+
 HRESULT load_texture_from_file(ID3D11Device* device, const wchar_t* filename, ID3D11ShaderResourceView** shader_resource_view, D3D11_TEXTURE2D_DESC* texture2d_desc)
 {
 	HRESULT hr{ S_OK };
@@ -39,27 +43,70 @@ HRESULT load_texture_from_file(ID3D11Device* device, const wchar_t* filename, ID
 			Microsoft::WRL::ComPtr<ID3D11DeviceContext> immediate_context;
 			device->GetImmediateContext(immediate_context.GetAddressOf());
 			hr = DirectX::CreateDDSTextureFromFile(device, immediate_context.Get(), dds_filename.c_str(), resource.GetAddressOf(), shader_resource_view);
-			_ASSERT_EXPR(SUCCEEDED(hr), hr_trace(hr));
 		}
 		else
 		{
+			// 1. 通常の読み込みを試行
 			hr = CreateWICTextureFromFile(device, filename, resource.GetAddressOf(), shader_resource_view);
-			_ASSERT_EXPR(SUCCEEDED(hr), hr_trace(hr));
-			resources.insert(make_pair(filename, *shader_resource_view));
+
+			// 2. 失敗した場合、resourcesフォルダ内を探す
+			if (FAILED(hr))
+			{
+				std::filesystem::path p(filename);
+				std::wstring simpleFilename = p.filename().wstring();
+				std::wstring newPath = L".\\resources\\" + simpleFilename;
+
+				hr = CreateWICTextureFromFile(device, newPath.c_str(), resource.GetAddressOf(), shader_resource_view);
+
+				// 成功したら、元のパス名で登録しておく（次回から高速化）
+				if (SUCCEEDED(hr))
+				{
+					resources.insert(make_pair(filename, *shader_resource_view));
+				}
+			}
+
+			// 3. それでも見つからない場合、ダミーテクスチャ（マゼンタ色）を作成して代用する
+			if (FAILED(hr))
+			{
+				OutputDebugStringW(L"\n[Warning] Texture Not Found. Using Dummy: ");
+				OutputDebugStringW(filename);
+				OutputDebugStringW(L"\n");
+
+				// エラーで停止させないため、ピンク色の1x1テクスチャを作る
+				hr = make_dummy_texture(device, shader_resource_view, 0xFF00FFFF, 16);
+
+				// ダミー作成に成功したら、それをリソースとして登録
+				if (SUCCEEDED(hr))
+				{
+					(*shader_resource_view)->GetResource(resource.GetAddressOf());
+					resources.insert(make_pair(filename, *shader_resource_view));
+				}
+			}
 		}
 	}
 
-	ComPtr<ID3D11Texture2D> texture2d;
-	hr = resource.Get()->QueryInterface<ID3D11Texture2D>(texture2d.GetAddressOf());
+	// 最終確認: ここで hr が失敗状態だと Assert で止まる
+	// ダミー生成が成功していれば hr は S_OK になっているはず
 	_ASSERT_EXPR(SUCCEEDED(hr), hr_trace(hr));
-	texture2d->GetDesc(texture2d_desc);
+
+	if (SUCCEEDED(hr))
+	{
+		ComPtr<ID3D11Texture2D> texture2d;
+		hr = resource.Get()->QueryInterface<ID3D11Texture2D>(texture2d.GetAddressOf());
+		if (SUCCEEDED(hr))
+		{
+			texture2d->GetDesc(texture2d_desc);
+		}
+	}
 
 	return hr;
 }
+
 void release_all_textures()
 {
 	resources.clear();
 }
+
 HRESULT make_dummy_texture(ID3D11Device* device, ID3D11ShaderResourceView** shader_resource_view, DWORD value, UINT dimension)
 {
 	HRESULT hr{ S_OK };

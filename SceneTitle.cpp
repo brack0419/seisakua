@@ -6,12 +6,11 @@
 #include "SceneManager.h"
 #include "framework.h"
 #include "SceneTutorial.h"
+#include <algorithm>
+#include <random>
+#include "SceneEnd.h"
 SceneTitle::SceneTitle(framework* fw) : fw_(fw)
 {
-	if (!fw_) {
-		MessageBox(nullptr, L"fw_ が nullptr です", L"Error", MB_OK);
-		return;
-	}
 }
 
 void SceneTitle::Initialize()
@@ -21,14 +20,41 @@ void SceneTitle::Initialize()
 	skinned_meshes[0] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\title_text.cereal");
 	skinned_meshes[1] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\base.cereal");
 	skinned_meshes[2] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\neon6.cereal");
-	skinned_meshes[3] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\idle.cereal");
+	skinned_meshes[3] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\player_idle.cereal");
 	skinned_meshes[4] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\crown.cereal");
 	skinned_meshes[5] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\cat.cereal");
 	skinned_meshes[6] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\sword.cereal");
+	skinned_meshes[7] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\player_idle2.cereal");
+	skinned_meshes[8] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\player_idle3.cereal");
+
+	for (int i = 0; i < 20; ++i)
+	{
+		wchar_t path[256];
+		swprintf_s(
+			path,
+			L".\\resources\\Direction\\%02d.dds",
+			i + 1
+		);
+
+		sprite_batches[i] =
+			std::make_unique<sprite_batch>(fw_->device.Get(), path, 1);
+	}
+
+	play_target_count = rand() % 4 + 1;
+
+	play_current_count = 0;
+
+	player_anim_time = 0.0f;
+	std::shuffle(
+		std::begin(model_order),
+		std::end(model_order),
+		std::mt19937{ std::random_device{}() }
+	);
+
+	model_order_index = 0;
+	current_model_index = player_model_indices[model_order[model_order_index]];
 
 	ShowCursor(true);
-	fw_->light_direction = DirectX::XMFLOAT4{ -1.0f, -1.0f, 1.0f, 0.0f };
-
 	fw_->distance = 20.0f;
 
 	fw_->camera_position.x = 7.712f;
@@ -45,8 +71,13 @@ void SceneTitle::Initialize()
 
 	fw_->bloomer->bloom_extraction_threshold = 0.2f;
 	fw_->bloomer->bloom_intensity = 0.25f;
-
+	text_object.y = -2.5f;
 	text_base_y = text_object.y;
+
+	// ★ ここが重要
+	text_float_base_y = text_object.y;
+	text_float_time = 0.0f;
+
 	camera_base_pos = fw_->camera_position;
 	bloom_base_threshold = fw_->bloomer->bloom_extraction_threshold;
 	bloom_base_intensity = fw_->bloomer->bloom_intensity;
@@ -62,7 +93,10 @@ void SceneTitle::Finalize()
 	skinned_meshes[4].reset();
 	skinned_meshes[5].reset();
 	skinned_meshes[6].reset();
+	skinned_meshes[7].reset();
+	skinned_meshes[8].reset();
 }
+
 DirectX::XMFLOAT3 HSVtoRGB(float h, float s, float v)
 {
 	float r, g, b;
@@ -88,6 +122,30 @@ DirectX::XMFLOAT3 HSVtoRGB(float h, float s, float v)
 
 void SceneTitle::Update(float elaspedTime)
 {
+	// 左クリックで Direction 再生開始
+	if ((GetAsyncKeyState(VK_RBUTTON) & 0x8000) && !play_direction)
+	{
+		play_direction = true;
+		direction_frame = 0;
+		direction_count = 0;
+	}
+	if (play_direction)
+	{
+		direction_count++;
+
+		if (direction_count >= frameSpan)
+		{
+			direction_count = 0;
+			direction_frame++;
+
+			if (direction_frame > 19) // 0?19
+			{
+				play_direction = false; // 終了
+				direction_frame = 0;
+			}
+		}
+	}
+
 	POINT mouse_client_pos{};
 	GetCursorPos(&mouse_client_pos);
 
@@ -102,11 +160,22 @@ void SceneTitle::Update(float elaspedTime)
 			fw_->mouse_client_pos.y >= click_min.y &&
 			fw_->mouse_client_pos.y <= click_max.y)
 		{
-			if (GetAsyncKeyState(VK_LBUTTON) & 0x8000)
+			if (!title_clicked && GetAsyncKeyState(VK_LBUTTON) & 0x8000)
 			{
-				// 落下演出スタート
+				title_clicked = true;
 				text_falling = true;
-				text_object.y = text_base_y; // 初期位置に戻す（念のため）
+				text_object.y = text_base_y;
+
+				// ★ クリック瞬間演出スタート
+				click_flash = true;
+				click_flash_time = 0.0f;
+
+				// bloom を一瞬だけ MAX
+				bloom_flash_threshold = fw_->bloomer->bloom_extraction_threshold;
+				bloom_flash_intensity = fw_->bloomer->bloom_intensity;
+
+				fw_->bloomer->bloom_extraction_threshold = 0.01f;
+				fw_->bloomer->bloom_intensity = 8.0f;
 
 				return;
 			}
@@ -116,37 +185,92 @@ void SceneTitle::Update(float elaspedTime)
 	if (GetAsyncKeyState(VK_SPACE) & 0x8000)
 	{
 		SceneManager::instance().ChangeScene(new SceneLoading(new SceneGame(hwnd, fw_), fw_));
+
+		//SceneManager::instance().ChangeScene(new SceneEnd(fw_, gameTime, defeatedCount));
 		return;
 	}
+	DirectX::XMFLOAT4 final_color{};
 
-	if (GetAsyncKeyState('T') & 0x8000) { SceneManager::instance().ChangeScene(new SceneTutorial(hwnd, fw_));	return; }
-	const float hue_speed = 0.1f;
-	const float breathe_speed = 1.0f;
-	const float fixed_pulse = 0.8f;
-
-	const float t = fw_->data.time;
-
-	const float hue = fmodf(t * hue_speed, 1.0f);
-
-	const DirectX::XMFLOAT3 rgb = HSVtoRGB(hue, 1.0f, 1.0f);
-
-	const float breathe = 0.5f * (sinf(t * breathe_speed) + 1.0f);
-
-	const float brightness = 0.5f + 0.5f * breathe + fixed_pulse;
-
-	const DirectX::XMFLOAT4 color{
-		rgb.x * brightness,
-		rgb.y * brightness,
-		rgb.z * brightness,
-		1.0f
-	};
-
-	fw_->material_color1 = color;
-	fw_->material_color2 = color;
-
-	if (!skinned_meshes[3]->animation_clips.empty())
+	if (!title_clicked)
 	{
-		animation& anim = skinned_meshes[3]->animation_clips[player_anim_index];
+		fw_->light_direction = DirectX::XMFLOAT4{ 1.0f, 1.0f, 1.0f, 0.0f };
+
+		// --- クリック前：白発光 ---
+		float pulse = 0.7f + 0.3f * sinf(fw_->data.time * 2.0f);
+
+		final_color = DirectX::XMFLOAT4(
+			titleGlowIntensity * pulse,
+			titleGlowIntensity * pulse,
+			titleGlowIntensity * pulse,
+			1.0f
+		);
+	}
+
+	else if (click_flash)
+	{
+		fw_->light_direction = DirectX::XMFLOAT4{ -1.0f, -1.0f, 1.0f, 0.0f };
+		// --- クリック瞬間：白 → 虹 lerp ---
+		click_flash_time += elaspedTime;
+		float t = click_flash_time / click_flash_duration;
+		if (t > 1.0f) t = 1.0f;
+
+		// 白
+		DirectX::XMFLOAT3 white{ 1.5f, 1.5f, 1.5f };
+
+		// 虹色
+		float hue = fmodf(fw_->data.time * 0.1f, 1.0f);
+		DirectX::XMFLOAT3 rainbow = HSVtoRGB(hue, 1.0f, 1.0f);
+
+		// lerp
+		DirectX::XMFLOAT3 rgb{
+			white.x + (rainbow.x - white.x) * t,
+			white.y + (rainbow.y - white.y) * t,
+			white.z + (rainbow.z - white.z) * t
+		};
+
+		final_color = DirectX::XMFLOAT4(
+			rgb.x,
+			rgb.y,
+			rgb.z,
+			1.0f
+		);
+
+		// 終了処理
+		if (t >= 1.0f)
+		{
+			click_flash = false;
+
+			// bloom 戻す
+			fw_->bloomer->bloom_extraction_threshold = bloom_flash_threshold;
+			fw_->bloomer->bloom_intensity = bloom_flash_intensity;
+		}
+	}
+
+	else
+	{
+		// --- 通常の虹色 ---
+		float breathe = 0.5f * (sinf(fw_->data.time) + 1.0f);
+		float brightness = 0.5f + 0.5f * breathe + 0.8f;
+
+		float hue = fmodf(fw_->data.time * 0.1f, 1.0f);
+		auto rgb = HSVtoRGB(hue, 1.0f, 1.0f);
+
+		final_color = DirectX::XMFLOAT4(
+			rgb.x * brightness,
+			rgb.y * brightness,
+			rgb.z * brightness,
+			1.0f
+		);
+	}
+
+	fw_->material_color1 = final_color;
+
+	skinned_mesh* current_mesh = skinned_meshes[current_model_index].get();
+
+	if (current_mesh && !current_mesh->animation_clips.empty())
+	{
+		animation& anim =
+			current_mesh->animation_clips[player_anim_index];
 
 		player_anim_time += elaspedTime;
 
@@ -155,12 +279,47 @@ void SceneTitle::Update(float elaspedTime)
 
 		if (frame >= static_cast<int>(anim.sequence.size()))
 		{
+			// 1ループ終了
 			frame = 0;
 			player_anim_time = 0.0f;
+
+			play_current_count++;
+
+			// 指定回数再生したらモデル切り替え
+			if (play_current_count >= play_target_count)
+			{
+				play_current_count = 0;
+
+				// 次のモデルへ
+				model_order_index++;
+
+				// 3つ使い切ったら再シャッフル
+				if (model_order_index >= 3)
+				{
+					int prev_model = current_model_index;
+
+					do
+					{
+						std::shuffle(
+							std::begin(model_order),
+							std::end(model_order),
+							std::mt19937{ std::random_device{}() }
+						);
+					} while (player_model_indices[model_order[0]] == prev_model);
+
+					model_order_index = 0;
+				}
+
+				current_model_index =
+					player_model_indices[model_order[model_order_index]];
+
+				play_target_count = rand() % 4 + 1;
+			}
 		}
 
 		player.keyframe = anim.sequence[frame];
 	}
+
 	if (!skinned_meshes[5]->animation_clips.empty())
 	{
 		animation& anim = skinned_meshes[5]->animation_clips[object_anim_index];
@@ -223,7 +382,7 @@ void SceneTitle::Update(float elaspedTime)
 			shake_time = 0.0f;
 		}
 	}
-	else
+	else if (!text_falling)
 	{
 		const float float_amplitude = 0.15f;
 		const float float_speed = 1.2f;
@@ -234,6 +393,7 @@ void SceneTitle::Update(float elaspedTime)
 			text_float_base_y +
 			sinf(text_float_time * float_speed) * float_amplitude;
 	}
+
 	if (screen_shake)
 	{
 		shake_time += elaspedTime;
@@ -338,48 +498,46 @@ void SceneTitle::Render()
 		);
 	}
 
-	if (!text_falling)
+	XMMATRIX T = XMMatrixTranslation(
+		fw_->translation_object3.x,
+		fw_->translation_object3.y,
+		fw_->translation_object3.z
+	);
+	XMMATRIX S = XMMatrixScaling(1, 1, 1);
+	XMMATRIX R = XMMatrixRotationRollPitchYaw(
+		fw_->rotation_object3.x,
+		fw_->rotation_object3.y,
+		fw_->rotation_object3.z
+	);
+
+	XMFLOAT4X4 world;
+	XMStoreFloat4x4(&world, C * S * R * T);
+
+	skinned_meshes[1]->render(
+		fw_->immediate_context.Get(),
+		world,
+		fw_->material_color,
+		nullptr,
+		false
+	);
+	XMFLOAT4 sword_color
+	{
+		fw_->material_color.x * sword_bloom_boost,
+		fw_->material_color.y * sword_bloom_boost,
+		fw_->material_color.z * sword_bloom_boost,
+		fw_->material_color.w
+	};
+
+	skinned_meshes[4]->render(
+		fw_->immediate_context.Get(),
+		world,
+		sword_color,
+		nullptr,
+		false
+	);
+	if (title_clicked && !text_falling)
 	{
 		{
-			XMMATRIX T = XMMatrixTranslation(
-				fw_->translation_object3.x,
-				fw_->translation_object3.y,
-				fw_->translation_object3.z
-			);
-			XMMATRIX S = XMMatrixScaling(1, 1, 1);
-			XMMATRIX R = XMMatrixRotationRollPitchYaw(
-				fw_->rotation_object3.x,
-				fw_->rotation_object3.y,
-				fw_->rotation_object3.z
-			);
-
-			XMFLOAT4X4 world;
-			XMStoreFloat4x4(&world, C * S * R * T);
-
-			skinned_meshes[1]->render(
-				fw_->immediate_context.Get(),
-				world,
-				fw_->material_color,
-				nullptr,
-				false
-			);
-
-			XMFLOAT4 sword_color
-			{
-				fw_->material_color.x * sword_bloom_boost,
-				fw_->material_color.y * sword_bloom_boost,
-				fw_->material_color.z * sword_bloom_boost,
-				fw_->material_color.w
-			};
-
-			skinned_meshes[4]->render(
-				fw_->immediate_context.Get(),
-				world,
-				sword_color,
-				nullptr,
-				false
-			);
-
 			skinned_meshes[6]->render(
 				fw_->immediate_context.Get(),
 				world,
@@ -414,12 +572,12 @@ void SceneTitle::Render()
 			XMFLOAT4X4 world;
 			XMStoreFloat4x4(&world, C * S * R * T);
 
-			skinned_meshes[3]->render(
+			skinned_meshes[current_model_index]->render(
 				fw_->immediate_context.Get(),
 				world,
 				player_color,
 				&player.keyframe,
-				true
+				false
 			);
 		}
 
@@ -514,12 +672,26 @@ void SceneTitle::Render()
 			fw_->pixel_shaders[2].Get()
 		);
 	}
+	if (play_direction)
+	{
+		sprite_batches[direction_frame]->begin(fw_->immediate_context.Get());
+		sprite_batches[direction_frame]->render(
+			fw_->immediate_context.Get(),
+			0, 0, 1920, 1080
+		);
+		sprite_batches[direction_frame]->end(fw_->immediate_context.Get());
+	}
 }
 
 void SceneTitle::DrawGUI()
 {
 #ifdef USE_IMGUI
 	ImGui::Begin("ImGUI");
+	ImGui::Text("Current Model Index: %d", current_model_index);
+	ImGui::Text("Play Target Count: %d", play_target_count);
+	ImGui::Text("Play Current Count: %d", play_current_count);
+
+	ImGui::DragFloat("Title Glow Intensity", &titleGlowIntensity, 0.01f, 0.0f, 10.0f);
 
 	// -------------------------------
 	// Click Area Visualization
