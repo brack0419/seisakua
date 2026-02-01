@@ -120,7 +120,7 @@ public:
 
 	void Initialize() override;
 	void Finalize() override;
-	void Update(float elapsedTime) override;
+	void Update(float elapsed_time) override;
 	void Render() override;
 	void DrawGUI() override;
 
@@ -189,7 +189,7 @@ private:
 		EnemyAnimState animState = EnemyAnimState::Run;
 
 		float runAnimTime = 0.0f;
-		float kickAnimTime = 0.0f;		
+		float kickAnimTime = 0.0f;
 		float hitAnimTime = 0.0f;
 
 		animation::keyframe keyframe;
@@ -209,8 +209,9 @@ private:
 	struct Box { float length = 0.0f; };
 	Box Boxes;
 
-	const float STAGE_TILE_LENGTH = 260.0f;
-	const int   MAX_STAGE_TILES = 3;
+
+	const float STAGE_TILE_LENGTH = 180.0f;
+	const int   MAX_STAGE_TILES = 4;
 
 	DirectX::XMFLOAT3 stageRotation{ 0,0,0 };
 
@@ -260,15 +261,15 @@ private:
 	float jump_anim_time = 0.0f;
 	float jumpAnimSpeed = 1.0f;
 
-	
+
 
 	bool isScoreSent = false; // ★追加: スコア送信済みフラグ
 
 	// =========================
 	// ヘルパー
 	// =========================
-	void UpdatePlayer(float elapsedTime);
-	void UpdateCamera(float elapsedTime);
+	void UpdatePlayer(float elapsed_time);
+	void UpdateCamera(float elapsed_time);
 	void UpdateStages();
 	void CheckCollisions();
 	void InputAttack();

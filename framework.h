@@ -162,7 +162,7 @@ public:
 		const DirectX::XMFLOAT3& half_extents,
 		float mass,
 		float restitution);
-	void simulate_patties(float elaspedTime);
+	void simulate_patties(float elapsed_time);
 	void resolve_pair(int ia, int ib);
 	//////////////////////////////////
 
@@ -242,7 +242,7 @@ public:
 	DirectX::XMFLOAT4 bun_collider_color{ 0.2f, 1.0f, 0.2f, 0.35f };
 
 	// 1体だけの簡易シミュレーション（重力＆床Y）
-	void simulate_bun(float elaspedTime);
+	void simulate_bun(float elapsed_time);
 
 	// マウス追加
 	POINT mouse_client_pos{ 960, 540 };
@@ -292,25 +292,6 @@ public:
 	float frame_times[FPS_HISTORY_COUNT] = {};
 	int frame_time_index = 0;
 	bool frame_times_filled = false;
-
-	// 画像スプライト
-	std::unique_ptr<sprite> sprite_juni; // タイトルロゴ
-	std::unique_ptr<sprite> sprite_saikoTime;   // 説明
-	std::unique_ptr<sprite> sprite_saikokill;      // 操作
-	std::unique_ptr<sprite> sprite_kaisi;    // ランキング
-
-	// 変換パラメータ管理用構造体
-	struct TransformData {
-		DirectX::XMFLOAT2 pos = { 0, 0 }; // 位置(X,Y)
-		float scale = 1.0f;               // スケール
-		float rotation = 0.0f;            // 回転(ラジアン)
-	};
-
-	// 各画像のパラメータ
-	TransformData tf_juni;
-	TransformData tf_saikoTime;
-	TransformData tf_saikokill;
-	TransformData tf_kaisi;
 
 	framework(HWND hwnd);
 	~framework();

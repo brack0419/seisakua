@@ -28,7 +28,7 @@ public:
 
 	void Initialize() override;
 	void Finalize() override;
-	void Update(float elapsedTime) override;
+	void Update(float elapsed_time) override;
 	void Render() override;
 	void DrawGUI() override;
 
@@ -186,8 +186,8 @@ private:
 	bool miss_played = false;
 
 	// 定数
-	const float STAGE_TILE_LENGTH = 60.0f;
-	const int MAX_STAGE_TILES = 5;
+	const float STAGE_TILE_LENGTH = 180.0f;
+	const int MAX_STAGE_TILES = 4;
 
 	// 色
 	DirectX::XMFLOAT4 playerColor{ 1,1,1,1 };
@@ -209,9 +209,9 @@ private:
 	TutorialStep prevStep;
 
 	// 関数
-	void UpdatePlayer(float elapsedTime);
-	void UpdateCamera(float elapsedTime);
-	void UpdateTutorialFlow(float elapsedTime); // チュートリアル進行管理
+	void UpdatePlayer(float elapsed_time);
+	void UpdateCamera(float elapsed_time);
+	void UpdateTutorialFlow(float elapsed_time); // チュートリアル進行管理
 	void InputAttack();
 	void SpawnDummyEnemy();
 	void SpawnObstacle();

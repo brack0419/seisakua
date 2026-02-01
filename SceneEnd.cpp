@@ -21,14 +21,13 @@ extern std::string globalPlayerName; // SceneTitleで設定した名前を参照
 SceneEnd::SceneEnd(framework* fw, float time, int enemyCount)
 	: fw_(fw), clearTime(time), defeatedEnemies(enemyCount)
 {
-
 }
 
 //初期化
 void SceneEnd::Initialize()
 {
 	HRESULT hr{ S_OK };
-
+	ShowCursor(TRUE);
 	// キル数の更新
 	if (defeatedEnemies > globalMaxKills)
 	{
@@ -44,21 +43,53 @@ void SceneEnd::Initialize()
 	// 名前、タイム、キル数を送信します
 	Leaderboard::SendScore(globalPlayerName, clearTime, defeatedEnemies);
 
-	skinned_meshes[0] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\End4.cereal");
-	skinned_meshes[1] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\pose3.cereal");
+	skinned_meshes[0] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\End.cereal");
+	skinned_meshes[1] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\pose.cereal");
+
+	sprite_button[0] = std::make_unique<sprite>(fw_->device.Get(), L".\\resources\\retryボタン.png");
+	sprite_button[1] = std::make_unique<sprite>(fw_->device.Get(), L".\\resources\\title.png");
+
 	sprite_end = std::make_unique<sprite>(fw_->device.Get(), L".\\resources\\score_bord_.png");
+	sprite_score[0] = std::make_unique<sprite>(fw_->device.Get(), L".\\resources\\S.png");
+	sprite_score[1] = std::make_unique<sprite>(fw_->device.Get(), L".\\resources\\A.png");
+	sprite_score[2] = std::make_unique<sprite>(fw_->device.Get(), L".\\resources\\B.png");
 	font_batch = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\fontE.png", 1);
 
-	skybox_ = std::make_unique<sky_map>(fw_->device.Get(), L".\\resources\\skybox1.dds");
+	skybox_ = std::make_unique<sky_map>(fw_->device.Get(), L".\\resources\\skybox.DDS");
 }
 
 //終了化
 void SceneEnd::Finalize()
 {
-	/*skinned_meshes[0].reset();
-	skinned_meshes[1].reset();
-	skinned_meshes[2].reset();*/
-	//sprite_end.reset();
+	// カーソルを表示
+	ShowCursor(TRUE);
+
+	// スキンメッシュの解放
+	skinned_meshes[0].reset();  // メッシュ0を解放
+	skinned_meshes[1].reset();  // メッシュ1を解放
+
+	// スプライトの解放
+	sprite_end.reset();  // スプライトを解放
+
+	// アニメーションインデックスとタイムをリセット
+	player_anim_index = 0;  // アニメーションインデックスを初期化
+	player_anim_time = 0.0f;  // アニメーションタイムをリセット
+
+	// グローバルスコアのリセット
+	globalMaxKills = 0;  // 最大キル数をリセット
+	globalBestTime = 0.0f;  // ベストタイムをリセット
+
+	// カメラの位置をリセット
+	fw_->camera_position = DirectX::XMFLOAT3{ 0.0f, 0.0f, 0.0f };  // カメラ位置を初期化
+
+	// スカイボックスのリセット
+	skyboxPosition = DirectX::XMFLOAT3{ 0.0f, 0.0f, 0.0f };  // スカイボックスの位置をリセット
+	skyboxRotation = DirectX::XMFLOAT3{ 0.0f, 0.0f, 0.0f };  // スカイボックスの回転をリセット
+	skyboxScale = 1.0f;  // スカイボックスのスケールをリセット
+
+	// エフェクト設定のリセット
+	fw_->bloomer->bloom_intensity = 0.0f;  // Bloomの強度をリセット
+	fw_->radial_blur_data.blur_strength = 0.0f;  // Radial Blurの強度をリセット
 }
 
 void SceneEnd::ChangePlayerAnimation(int newIndex)
@@ -70,9 +101,8 @@ void SceneEnd::ChangePlayerAnimation(int newIndex)
 }
 
 //更新処理
-void SceneEnd::Update(float elaspedTime)
+void SceneEnd::Update(float elapsed_time)
 {
-	ShowCursor(TRUE);
 	fw_->light_direction = DirectX::XMFLOAT4{ -1.0f, -1.0f, 1.0f, 0.0f };
 
 	fw_->distance = 20.0f;
@@ -80,12 +110,11 @@ void SceneEnd::Update(float elaspedTime)
 	fw_->bloomer->bloom_extraction_threshold = 0.0f;
 	fw_->bloomer->bloom_intensity = 0.0f;
 
-
 	if (!skinned_meshes[1]->animation_clips.empty())
 	{
 		animation& anim = skinned_meshes[1]->animation_clips[player_anim_index];
 
-		player_anim_time += elaspedTime;
+		player_anim_time += elapsed_time;
 
 		int frame =
 			static_cast<int>(player_anim_time * anim.sampling_rate);
@@ -110,13 +139,11 @@ void SceneEnd::Update(float elaspedTime)
 		+ speedScore * 0.2f;  // テクニック
 	finalScore = static_cast<int>(score01 * 100000);
 
-
-
-	if (finalScore >= 70000)
+	if (finalScore >= 60000)
 	{
 		ChangePlayerAnimation(0);
 	}
-	else if (finalScore >= 35000)
+	else if (finalScore < 60000 && finalScore >= 30000)
 	{
 		ChangePlayerAnimation(1);
 		translation_object4.x = 3.9f;
@@ -136,21 +163,64 @@ void SceneEnd::Update(float elaspedTime)
 	// -------------------------
 	// マウス座標取得
 	// -------------------------
-	//POINT mouse_client_pos{};
-	//GetCursorPos(&mouse_client_pos);
+	POINT mouse_client_pos{};
+	GetCursorPos(&mouse_client_pos);
 
 	// クライアント座標へ変換
 	HWND hwnd = FindWindow(APPLICATION_NAME, L"");
-	//ScreenToClient(hwnd, &mouse_client_pos);
+	ScreenToClient(hwnd, &mouse_client_pos);
 
 	// -------------------------
 	// 元々の SPACE キー遷移
 	// -------------------------
-	if (GetAsyncKeyState(VK_LCONTROL) & 0x8000 || GetAsyncKeyState(VK_SPACE) & 0x8000)
-		//if (GetAsyncKeyState(VK_SPACE) & 0x8000)
+	bool hoverR =
+		mouse_client_pos.x >= 200 &&
+		mouse_client_pos.x <= 535 &&
+		mouse_client_pos.y >= 790 &&
+		mouse_client_pos.y <= 975;
+
+	if (hoverR)
 	{
-		SceneManager::instance().ChangeScene(new SceneTitle(fw_));
-		return;
+		buttonAnimTimeR += elapsed_time * 2.0f;
+		float p = PingPong(buttonAnimTimeR);
+		float eased = EaseOutCubic(p);
+
+		Button_color_R = 0.7f + 0.6f * eased;
+		if (GetAsyncKeyState(VK_LBUTTON) & 0x8000)
+		{
+			SceneManager::instance().ChangeScene(new SceneLoading(new SceneGame(hwnd, fw_), fw_));
+		}
+
+	}
+	else
+	{
+		buttonAnimTimeR = 0.0f;
+		Button_color_R = 1.0f;
+	}
+
+	bool hoverL =
+		mouse_client_pos.x >= 600 &&
+		mouse_client_pos.x <= 935 &&
+		mouse_client_pos.y >= 790 &&
+		mouse_client_pos.y <= 975;
+
+	if (hoverL)
+	{
+		buttonAnimTimeL += elapsed_time * 2.0f;
+		float p = PingPong(buttonAnimTimeL);
+		float eased = EaseOutCubic(p);
+
+		Button_color_L = 0.7f + 0.6f * eased;
+		if (GetAsyncKeyState(VK_LBUTTON) & 0x8000)
+		{
+			SceneManager::instance().ChangeScene(new SceneTitle(fw_));
+		}
+
+	}
+	else
+	{
+		buttonAnimTimeL = 0.0f;
+		Button_color_L = 1.0f;
 	}
 }
 
@@ -295,9 +365,6 @@ void SceneEnd::Render()
 		wvp
 	);
 
-
-
-
 	// DYNAMIC_BACKGROUND
 	if (fw_->enable_dynamic_background)
 	{
@@ -414,6 +481,23 @@ void SceneEnd::Render()
 
 		sprite_end->render(fw_->immediate_context.Get(), Pos.x, Pos.y, scalePos.x, scalePos.y);
 	}
+
+	if (finalScore >= 60000)
+	{
+		sprite_score[0]->render(fw_->immediate_context.Get(), rankPos.x, rankPos.y, scaleRank.x, scaleRank.y);
+	}
+	else if (finalScore < 60000 && finalScore >= 30000)
+	{
+		sprite_score[1]->render(fw_->immediate_context.Get(), rankPos.x, rankPos.y, scaleRank.x, scaleRank.y);
+	}
+	else
+	{
+		sprite_score[2]->render(fw_->immediate_context.Get(), rankPos.x, rankPos.y, scaleRank.x, scaleRank.y);
+	}
+
+	sprite_button[0]->render(fw_->immediate_context.Get(), buttonPos.x, buttonPos.y, buttonScale.x, buttonScale.y, Button_color_R, Button_color_R, Button_color_R, 1.0f, 0.0f);
+	sprite_button[1]->render(fw_->immediate_context.Get(), buttonPos.x + 400, buttonPos.y, buttonScale.x, buttonScale.y, Button_color_L, Button_color_L, Button_color_L, 1.0f, 0.0f);
+
 	DrawNumber(static_cast<int>(clearTime / 60), timePosition.x, timePosition.y, timeScale);
 
 	//saveSpeed
@@ -502,9 +586,8 @@ void SceneEnd::DrawGUI()
 	ImGui::SliderFloat("translation_object4.z", &translation_object4.z, -200.0f, +200.0f);
 
 	ImGui::Separator();
-	ImGui::SliderFloat("scaling4.x", &scaling4.x, -10.0f, +10.0f);
-	ImGui::SliderFloat("scaling4.y", &scaling4.y, -10.0f, +10.0f);
-	ImGui::SliderFloat("scaling4.z", &scaling4.z, -10.0f, +10.0f);
+	ImGui::SliderFloat("button.x", &buttonPos.x, 0.0f, +1000.0f);
+	ImGui::SliderFloat("button.y", &buttonPos.y, 0.0f, +1000.0f);
 
 	ImGui::Separator();
 	ImGui::SliderFloat("rotation_object3.y", &rotation_object4.y, -100.0f, +100.0f);

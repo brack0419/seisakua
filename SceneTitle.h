@@ -6,12 +6,27 @@
 #include "sprite_batch.h"
 #include "Leaderboard.h" // 追加
 #include <mutex> // 追加
+
+#define TIME_STOP 5.0f
 //==================================================
 // タイトルシーン
 //==================================================
 class SceneTitle : public Scene
 {
 public:
+	bool click;
+	float title_time = 0;
+
+	bool cool = false;
+
+	float count_time = 0;
+
+	float buttonAnimTimeL = 0.0f;
+	float buttonAnimTimeR = 0.0f;
+
+
+	float Button_color_L = 1.0f;
+	float Button_color_R = 1.0f;
 
 	int music_Num = 0;
 
@@ -28,7 +43,7 @@ public:
 	// =========================
 	void Initialize() override;
 	void Finalize() override;
-	void Update(float elaspedTime) override;
+	void Update(float elapsed_time) override;
 	void Render() override;
 	void DrawGUI() override;
 
@@ -42,7 +57,7 @@ public:
 
 	std::unique_ptr<skinned_mesh>  skinned_meshes[15];
 	std::unique_ptr<sprite_batch>  sprite_batches[30];
-	std::unique_ptr<sprite_batch>  Spr_botan[3];
+	std::unique_ptr<sprite_batch>  Spr_botan[5];
 	std::unique_ptr<sprite_batch>  Spr_music[10];
 
 	Microsoft::WRL::ComPtr<ID3D11PixelShader> effect_shaders[2];
@@ -71,6 +86,25 @@ public:
 	};
 	Microsoft::WRL::ComPtr<ID3D11RasterizerState> rasterizer_states[4];
 
+	struct TransformData {
+		DirectX::XMFLOAT2 pos = { 0, 0 };
+		DirectX::XMFLOAT2 size = { 256.0f, 128.0f }; // 初期サイズ(幅, 高さ)
+		float rotation = 0.0f;      // 回転(度)
+		DirectX::XMFLOAT4 color = { 1, 1, 1, 1 };
+	};
+
+	std::unique_ptr<sprite> sprite_juni;
+	std::unique_ptr<sprite> sprite_saikoTime;
+	std::unique_ptr<sprite> sprite_saikokill;
+	std::unique_ptr<sprite> sprite_kaisi;
+	std::unique_ptr<::sprite> sprite_namae;
+
+
+	TransformData tf_juni;
+	TransformData tf_saikoTime;
+	TransformData tf_saikokill;
+	TransformData tf_kaisi;
+	TransformData tf_namae;
 	std::unique_ptr<bloom> bloomer;
 
 	//  数字描画用のバッチと関数
@@ -82,6 +116,10 @@ public:
 	float bestScoreScale = 0.4f;
 	DirectX::XMFLOAT2 bestTimePos = { 1500.0f, 180.0f };
 	float bestTimeScale = 0.3f;
+
+	DirectX::XMFLOAT2 tutorialBtnPos = { 100.0f, 100.0f }; // 左上あたり
+	DirectX::XMFLOAT2 tutorialBtnSize = { 300.0f, 100.0f }; // ボタンの大きさ
+	float tutorialBtnScale = 1.0f; // 拡大縮小率
 
 	float gameTime = 0.0;
 	int defeatedCount = 0;
@@ -258,7 +296,7 @@ private:
 	void DrawNumber(int number, float x, float y, float scale, ID3D11DeviceContext* ctx);
 
 	std::unique_ptr<sprite_batch> font_alpha_batch; // アルファベット用バッチ
-	std::string inputName = "player"; // 入力中の名前 (初期値)
+	std::string inputName = ""; // 入力中の名前 (初期値)
 	bool keyState[256] = {};          // キー押しっぱなし防止用
 
 	// 文字列描画用関数

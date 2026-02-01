@@ -382,7 +382,6 @@ bool framework::initialize()
 
 void framework::update(float elapsed_time/*Elapsed seconds from last frame*/)
 {
-
 	SetCursor(hoverCursor);
 #ifdef USE_IMGUI
 	ImGui_ImplDX11_NewFrame();

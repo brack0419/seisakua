@@ -25,14 +25,26 @@ static bool prevR = false;
 bool nowL = false;
 bool nowR = false;
 
+float PingPong(float t)
+{
+	float v = fmodf(t, 2.0f);
+	return 1.0f - fabsf(v - 1.0f);
+}
+float EaseOutCubic(float x)
+{
+	return 1.0f - powf(1.0f - x, 3.0f);
+}
+
 SceneTitle::SceneTitle(framework* fw) : fw_(fw)
 {
 }
 
 void SceneTitle::Initialize()
 {
-	//music_Num = 0;
-	//MessageBoxA(NULL, "SceneTitle::Initialize Started!", "Debug", MB_OK);
+	ShowCursor(TRUE);
+	title_time = 0;
+	cool = false;
+
 
 	HRESULT hr{ S_OK };
 
@@ -41,10 +53,8 @@ void SceneTitle::Initialize()
 
 	font_alpha_batch = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\fontG.png", 1);
 
-
 	skinned_meshes[0] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\title_text.cereal");
 	skinned_meshes[1] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\base.cereal");
-	skinned_meshes[2] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\neon6.cereal");
 	skinned_meshes[3] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\player_idle.cereal");
 	skinned_meshes[4] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\crown.cereal");
 	skinned_meshes[5] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\cat.cereal");
@@ -57,12 +67,40 @@ void SceneTitle::Initialize()
 	Spr_botan[0] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\fontN.png", 1);
 	Spr_botan[1] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\musicL.png", 1);
 	Spr_botan[2] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\musicR.png", 1);
+	Spr_botan[3] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\TutorialBtn.png", 1);
+
+	sprite_juni = std::make_unique<::sprite>(fw_->device.Get(), L".\\resources\\juni.png");
+	sprite_saikoTime = std::make_unique<::sprite>(fw_->device.Get(), L".\\resources\\saikoTime.png");
+	sprite_saikokill = std::make_unique<::sprite>(fw_->device.Get(), L".\\resources\\saikokill.png");
+	sprite_kaisi = std::make_unique<::sprite>(fw_->device.Get(), L".\\resources\\kaisi.png");
+	sprite_namae = std::make_unique<::sprite>(fw_->device.Get(), L".\\resources\\namae.png");
+
+	Spr_music[0] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\music1.png", 1);
+	Spr_music[1] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\music2.png", 1);
+	Spr_music[2] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\music3.png", 1);
+
+	// 初期位置とサイズの指定
+	tf_namae.pos = { 940.0f, 509.0f };  // 画面中央あたり
+	tf_namae.size = { 175.0f, 54.0f }; // 画像の大きさ
+
+
+	// 初期パラメータ設定 (画面に見える位置に適当に配置)
+	tf_juni.pos = { 648.0f, 551.0f };
+	tf_juni.size = { 400.0f, 111.0f };
+
+	tf_saikoTime.pos = { 1273.0f, 590.0f };
+	tf_saikoTime.size = { 214.0f, 63.0f };
+
+	tf_saikokill.pos = { 1603.0f, 573.0f };
+	tf_saikokill.size = { 246.0f, 91.0f };
+
+	tf_kaisi.pos = { 82.0f, 940.0f };
+	tf_kaisi.size = { 300.0f, 100.0f };
 
 	auto& audio = Audio::Instance();
 	bgmGame[0] = audio.LoadAudioSource(".\\resources\\スティックマンの冒険.wav");
 	bgmGame[1] = audio.LoadAudioSource(".\\resources\\スティックマンの伝説.wav");
 	bgmGame[2] = audio.LoadAudioSource(".\\resources\\Legends of Stickman.wav");
-
 
 	for (int i = 0; i < 20; ++i)
 	{
@@ -126,28 +164,37 @@ void SceneTitle::Initialize()
 		std::lock_guard<std::mutex> lock(this->rankingMutex);
 		this->rankingData = data;
 		});
-
 }
 
 void SceneTitle::Finalize()
 {
-	skinned_meshes[0].reset();
-	skinned_meshes[1].reset();
-	skinned_meshes[2].reset();
-	skinned_meshes[3].reset();
-	skinned_meshes[4].reset();
-	skinned_meshes[5].reset();
-	skinned_meshes[6].reset();
-	skinned_meshes[7].reset();
-	skinned_meshes[8].reset();
+	// カーソルを再表示
+	ShowCursor(TRUE);
 
-	for (int i = 0; i < 3; i++)
+	// メッシュの解放
+	for (auto& m : skinned_meshes)
+		m.reset();
+
+	// フォントバッチの解放
+	font_batch.reset();
+	font_alpha_batch.reset();
+
+	// スプライトバッチの解放
+	for (int i = 0; i < 20; ++i)
+		sprite_batches[i].reset();
+
+	// ボタンのスプライトバッチの解放
+	for (int i = 0; i < 3; ++i)
+		Spr_botan[i].reset();
+
+	// BGMの停止と解放
+	for (int i = 0; i < MUSIC_COUNT; i++)
 	{
 		if (bgmGame[i])
 		{
-			bgmGame[i]->Stop();
-			delete bgmGame[i];
-			bgmGame[i] = nullptr;
+			bgmGame[i]->Stop();  // BGM停止
+			delete bgmGame[i];   // メモリ解放
+			bgmGame[i] = nullptr;  // ポインタをNULLに設定
 		}
 	}
 }
@@ -175,8 +222,9 @@ DirectX::XMFLOAT3 HSVtoRGB(float h, float s, float v)
 	return { r, g, b };
 }
 
-void SceneTitle::Update(float elaspedTime)
+void SceneTitle::Update(float elapsed_time)
 {
+	title_time += elapsed_time;
 	POINT mouse_client_pos{};
 	GetCursorPos(&mouse_client_pos);
 
@@ -230,30 +278,57 @@ void SceneTitle::Update(float elaspedTime)
 		lastMusic = music_Num;
 	}
 
+	if (title_time >= TIME_STOP)
+	{
+		click = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+	}
 
-	bool click = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
-
-	if (fw_->mouse_client_pos.x >= 1612 &&
+	bool hoverL =
+		fw_->mouse_client_pos.x >= 1612 &&
 		fw_->mouse_client_pos.x <= 1697 &&
 		fw_->mouse_client_pos.y >= 985 &&
-		fw_->mouse_client_pos.y <= 1075)
+		fw_->mouse_client_pos.y <= 1075;
+
+	if (hoverL)
 	{
+		buttonAnimTimeL += elapsed_time * 2.0f;
+		float p = PingPong(buttonAnimTimeL);
+		float eased = EaseOutCubic(p);
+
+		// 0.7 ～ 1.3 で明滅
+		Button_color_L = 0.7f + 0.6f * eased;
+
 		nowL = click;
 	}
+	else
+	{
+		buttonAnimTimeL = 0.0f;
+		Button_color_L = 1.0f;
+	}
 
-	if (fw_->mouse_client_pos.x >= 1825 &&
+	bool hoverR =
+		fw_->mouse_client_pos.x >= 1825 &&
 		fw_->mouse_client_pos.x <= 1912 &&
 		fw_->mouse_client_pos.y >= 985 &&
-		fw_->mouse_client_pos.y <= 1075)
+		fw_->mouse_client_pos.y <= 1075;
+
+	if (hoverR)
 	{
+		buttonAnimTimeR += elapsed_time * 2.0f;
+		float p = PingPong(buttonAnimTimeR);
+		float eased = EaseOutCubic(p);
+
+		Button_color_R = 0.7f + 0.6f * eased;
+
 		nowR = click;
 	}
-
-	if (nowL && !prevL)
+	else
 	{
-		// ← 前の曲
-		music_Num = (music_Num + MUSIC_COUNT - 1) % MUSIC_COUNT;
+		buttonAnimTimeR = 0.0f;
+		Button_color_R = 1.0f;
 	}
+
+
 
 	if (nowR && !prevR)
 	{
@@ -261,92 +336,147 @@ void SceneTitle::Update(float elaspedTime)
 		music_Num = (music_Num + 1) % MUSIC_COUNT;
 	}
 
+	if (nowL && !prevL)
+	{
+		// → 次の曲
+		music_Num = (music_Num + 2) % MUSIC_COUNT;
+	}
+
 	prevL = nowL;
 	prevR = nowR;
 
 
 
-	// 左クリックで Direction 再生開始
-	if ((GetAsyncKeyState(VK_RBUTTON) & 0x8000) && !play_direction)
+	if (title_time >= TIME_STOP)
 	{
-		play_direction = true;
-		direction_frame = 0;
-		direction_count = 0;
-	}
-	if (play_direction)
-	{
-		direction_count++;
-
-		if (direction_count >= frameSpan)
+		// 左クリックで Direction 再生開始
+		if ((GetAsyncKeyState(VK_RBUTTON) & 0x8000) && !play_direction)
 		{
+			play_direction = true;
+			direction_frame = 0;
 			direction_count = 0;
-			direction_frame++;
-
-			if (direction_frame > 19) // 0?19
-			{
-				play_direction = false; // 終了
-				direction_frame = 0;
-			}
 		}
-	}
-
-	
-
-	// --- Click Area : 演出トリガーのみ ---
-	if (!text_falling)   // 落下中は無視
-	{
-		if (fw_->mouse_client_pos.x >= click_min.x &&
-			fw_->mouse_client_pos.x <= click_max.x &&
-			fw_->mouse_client_pos.y >= click_min.y &&
-			fw_->mouse_client_pos.y <= click_max.y)
+		if (play_direction)
 		{
-			if (!title_clicked && GetAsyncKeyState(VK_LBUTTON) & 0x8000)
+			direction_count++;
+
+			if (direction_count >= frameSpan)
 			{
-				title_clicked = true;
-				text_falling = true;
-				text_object.y = text_base_y;
+				direction_count = 0;
+				direction_frame++;
 
-				// ★ クリック瞬間演出スタート
-				click_flash = true;
-				click_flash_time = 0.0f;
+				if (direction_frame > 19) // 0?19
+				{
+					play_direction = false; // 終了
+					direction_frame = 0;
+				}
+			}
+		}
+	}
+	if (title_time >= TIME_STOP)
+	{
+		if (!text_falling && !title_clicked) // ゲーム開始演出中は押せないようにする
+		{
+			// マウスカーソルがボタンの矩形範囲内にあるかチェック
+			if (fw_->mouse_client_pos.x >= 13 &&
+				fw_->mouse_client_pos.x <= 349 &&
+				fw_->mouse_client_pos.y >= 19 &&
+				fw_->mouse_client_pos.y <= 150)
+			{
+				// 左クリックされたか？
+				if ((GetAsyncKeyState(VK_LBUTTON) & 0x8000) && !prevL)
+				{
+					// 音を鳴らすならここで再生
+					// if (bgmGame[0]) bgmGame[0]->Play(false); 
 
-				// bloom を一瞬だけ MAX
-				bloom_flash_threshold = fw_->bloomer->bloom_extraction_threshold;
-				bloom_flash_intensity = fw_->bloomer->bloom_intensity;
+					// チュートリアルシーンへ遷移
+					// SceneLoadingを経由して、リソース読み込み画面を挟むのが安全です
+					SceneManager::instance().ChangeScene(new SceneLoading(new SceneTutorial(hwnd, fw_), fw_));
+					return;
+				}
 
-				fw_->bloomer->bloom_extraction_threshold = 0.01f;
-				fw_->bloomer->bloom_intensity = 8.0f;
-
-				return;
+				// (オプション) ホバー時に少し大きくするなどの演出を入れるならここ
+				tutorialBtnScale = 1.1f;
+			}
+			else
+			{
+				// カーソルが外れたらサイズを戻す
+				tutorialBtnScale = 1.0f;
 			}
 		}
 	}
 
-	if (GetAsyncKeyState(VK_SPACE) & 0x8000)
+	if (title_time >= TIME_STOP)
 	{
-		saveNum = music_Num;
-		// ★追加: 名前を確定して保存
-		if (inputName.empty()) inputName = "noname";
-		globalPlayerName = inputName;
+		// --- Click Area : 演出トリガーのみ ---
+		if (!text_falling)   // 落下中は無視
+		{
+			if (fw_->mouse_client_pos.x >= click_min.x &&
+				fw_->mouse_client_pos.x <= click_max.x &&
+				fw_->mouse_client_pos.y >= click_min.y &&
+				fw_->mouse_client_pos.y <= click_max.y)
+			{
+				if (!title_clicked && GetAsyncKeyState(VK_LBUTTON) & 0x8000)
+				{
+					title_clicked = true;
+					text_falling = true;
+					text_object.y = text_base_y;
 
+					// ★ クリック瞬間演出スタート
+					click_flash = true;
+					click_flash_time = 0.0f;
+
+					// bloom を一瞬だけ MAX
+					bloom_flash_threshold = fw_->bloomer->bloom_extraction_threshold;
+					bloom_flash_intensity = fw_->bloomer->bloom_intensity;
+
+					fw_->bloomer->bloom_extraction_threshold = 0.01f;
+					fw_->bloomer->bloom_intensity = 8.0f;
+					cool = true;
+
+					return;
+				}
+			}
+		}
+	}
+
+	if (cool)
+	{
+		count_time += elapsed_time;
+		if (count_time >= 2.0f)
+		{
+			saveNum = music_Num;
+			// ★追加: 名前を確定して保存
+			if (inputName.empty()) inputName = "noname";
+			globalPlayerName = inputName;
 		SceneManager::instance().ChangeScene(new SceneLoading(new SceneGame(hwnd, fw_), fw_));
-
-		//SceneManager::instance().ChangeScene(new SceneEnd(fw_, gameTime, defeatedCount));
-		return;
+		}
 	}
-	if (GetAsyncKeyState('E') & 0x8000)
+	if (title_time >= TIME_STOP)
 	{
-		SceneManager::instance().ChangeScene(new SceneEnd(fw_, 1, 1));
+		//if (GetAsyncKeyState(VK_SPACE) & 0x8000)
+		//{
+		//	
 
-		//SceneManager::instance().ChangeScene(new SceneEnd(fw_, gameTime, defeatedCount));
-		return;
-	}
-	if (GetAsyncKeyState('T') & 0x8000)
-	{
-		SceneManager::instance().ChangeScene(new SceneLoading(new SceneTutorial(hwnd, fw_), fw_));
+		//	SceneManager::instance().ChangeScene(new SceneLoading(new SceneGame(hwnd, fw_), fw_));
 
-		//SceneManager::instance().ChangeScene(new SceneEnd(fw_, gameTime, defeatedCount));
-		return;
+		//	//SceneManager::instance().ChangeScene(new SceneEnd(fw_, gameTime, defeatedCount));
+		//	return;
+		//}
+		//if (GetAsyncKeyState('E') & 0x8000)
+		//{
+		//	SceneManager::instance().ChangeScene(new SceneEnd(fw_, 1, 1));
+
+		//	//SceneManager::instance().ChangeScene(new SceneEnd(fw_, gameTime, defeatedCount));
+		//	return;
+		//}
+		//if (GetAsyncKeyState('T') & 0x8000)
+		//{
+		//	SceneManager::instance().ChangeScene(new SceneLoading(new SceneTutorial(hwnd, fw_), fw_));
+
+		//	//SceneManager::instance().ChangeScene(new SceneEnd(fw_, gameTime, defeatedCount));
+		//	return;
+		//}
 	}
 
 	DirectX::XMFLOAT4 final_color{};
@@ -370,7 +500,7 @@ void SceneTitle::Update(float elaspedTime)
 	{
 		fw_->light_direction = DirectX::XMFLOAT4{ -1.0f, -1.0f, 1.0f, 0.0f };
 		// --- クリック瞬間：白 → 虹 lerp ---
-		click_flash_time += elaspedTime;
+		click_flash_time += elapsed_time;
 		float t = click_flash_time / click_flash_duration;
 		if (t > 1.0f) t = 1.0f;
 
@@ -432,7 +562,7 @@ void SceneTitle::Update(float elaspedTime)
 		animation& anim =
 			current_mesh->animation_clips[player_anim_index];
 
-		player_anim_time += elaspedTime;
+		player_anim_time += elapsed_time;
 
 		int frame =
 			static_cast<int>(player_anim_time * anim.sampling_rate);
@@ -484,7 +614,7 @@ void SceneTitle::Update(float elaspedTime)
 	{
 		animation& anim = skinned_meshes[5]->animation_clips[object_anim_index];
 
-		object_anim_time += elaspedTime;
+		object_anim_time += elapsed_time;
 
 		int frame = static_cast<int>(object_anim_time * anim.sampling_rate);
 		if (frame >= static_cast<int>(anim.sequence.size()))
@@ -499,7 +629,7 @@ void SceneTitle::Update(float elaspedTime)
 	{
 		animation& anim = skinned_meshes[6]->animation_clips[object2_anim_index];
 
-		object2_anim_time += elaspedTime;
+		object2_anim_time += elapsed_time;
 
 		int frame = static_cast<int>(object2_anim_time * anim.sampling_rate);
 		if (frame >= static_cast<int>(anim.sequence.size()))
@@ -516,7 +646,7 @@ void SceneTitle::Update(float elaspedTime)
 
 	if (text_falling)
 	{
-		text_object.y -= text_fall_speed * elaspedTime;
+		text_object.y -= text_fall_speed * elapsed_time;
 
 		if (text_object.y <= text_min_y)
 		{
@@ -547,7 +677,7 @@ void SceneTitle::Update(float elaspedTime)
 		const float float_amplitude = 0.15f;
 		const float float_speed = 1.2f;
 
-		text_float_time += elaspedTime;
+		text_float_time += elapsed_time;
 
 		text_object.y =
 			text_float_base_y +
@@ -556,7 +686,7 @@ void SceneTitle::Update(float elaspedTime)
 
 	if (screen_shake)
 	{
-		shake_time += elaspedTime;
+		shake_time += elapsed_time;
 
 		float t = shake_time / shake_duration;
 		if (t >= 1.0f)
@@ -584,7 +714,7 @@ void SceneTitle::Update(float elaspedTime)
 
 	if (landing_impact)
 	{
-		impact_time += elaspedTime;
+		impact_time += elapsed_time;
 
 		float t = impact_time / impact_duration;
 
@@ -842,8 +972,6 @@ void SceneTitle::Render()
 		sprite_batches[direction_frame]->end(fw_->immediate_context.Get());
 	}
 
-	
-
 	// ★ ランキング描画
 	// スレッドセーフにデータにアクセス
 		// ★ ランキング描画
@@ -880,7 +1008,7 @@ void SceneTitle::Render()
 		fw_->immediate_context.Get(),
 		1609, 984,
 		500 * 0.18f, 500 * 0.18,
-		1, 1, 1, 1,
+		Button_color_L, Button_color_L, Button_color_L, 1,
 		0.0f
 	);
 	Spr_botan[1]->end(fw_->immediate_context.Get());
@@ -890,10 +1018,50 @@ void SceneTitle::Render()
 		fw_->immediate_context.Get(),
 		1823, 984,
 		500 * 0.18f, 500 * 0.18,
-		1, 1, 1, 1,
+		Button_color_R, Button_color_R, Button_color_R, 1,
 		0.0f
 	);
 	Spr_botan[2]->end(fw_->immediate_context.Get());
+
+	if (Spr_botan[3])
+	{
+		Spr_botan[3]->begin(fw_->immediate_context.Get());
+		Spr_botan[3]->render(
+			fw_->immediate_context.Get(),
+			5.0f, 13.0f,        // 表示位置
+			348.0f * tutorialBtnScale,      // 幅
+			132.0f * tutorialBtnScale,      // 高さ
+			1.0f, 1.0f, 1.0f, 1.0f,                    // 色 (白)
+			0.0f                                       // 回転
+		);
+		Spr_botan[3]->end(fw_->immediate_context.Get());
+	}
+
+	// ★追加画像の描画
+	if (sprite_juni) sprite_juni->render(fw_->immediate_context.Get(), tf_juni.pos.x, tf_juni.pos.y, tf_juni.size.x, tf_juni.size.y, tf_juni.color.x, tf_juni.color.y, tf_juni.color.z, tf_juni.color.w, tf_juni.rotation);
+	if (sprite_saikoTime) sprite_saikoTime->render(fw_->immediate_context.Get(), tf_saikoTime.pos.x, tf_saikoTime.pos.y, tf_saikoTime.size.x, tf_saikoTime.size.y, tf_saikoTime.color.x, tf_saikoTime.color.y, tf_saikoTime.color.z, tf_saikoTime.color.w, tf_saikoTime.rotation);
+	if (sprite_saikokill) sprite_saikokill->render(fw_->immediate_context.Get(), tf_saikokill.pos.x, tf_saikokill.pos.y, tf_saikokill.size.x, tf_saikokill.size.y, tf_saikokill.color.x, tf_saikokill.color.y, tf_saikokill.color.z, tf_saikokill.color.w, tf_saikokill.rotation);
+	if (sprite_kaisi) sprite_kaisi->render(fw_->immediate_context.Get(), tf_kaisi.pos.x, tf_kaisi.pos.y, tf_kaisi.size.x, tf_kaisi.size.y, tf_kaisi.color.x, tf_kaisi.color.y, tf_kaisi.color.z, tf_kaisi.color.w, tf_kaisi.rotation);
+
+	if (sprite_namae) {
+		sprite_namae->render(
+			fw_->immediate_context.Get(),
+			tf_namae.pos.x, tf_namae.pos.y,
+			tf_namae.size.x, tf_namae.size.y,
+			tf_namae.color.x, tf_namae.color.y, tf_namae.color.z, tf_namae.color.w,
+			tf_namae.rotation
+		);
+	}
+
+	Spr_music[music_Num]->begin(fw_->immediate_context.Get());
+	Spr_music[music_Num]->render(
+		fw_->immediate_context.Get(),
+		1716.0f, 981.0f,
+		500 * 0.18f, 500 * 0.18f,
+		1, 1, 1, 1,
+		0.0f
+	);
+	Spr_music[music_Num]->end(fw_->immediate_context.Get());
 }
 
 void SceneTitle::DrawNumber(int number, float x, float y, float scale, ID3D11DeviceContext* ctx)
@@ -1005,6 +1173,9 @@ void SceneTitle::DrawGUI()
 
 	HWND hwnd = FindWindow(APPLICATION_NAME, L"");
 	ScreenToClient(hwnd, &mouse_client_pos);
+
+	ImGui::Text("time: %d", title_time);
+	ImGui::Text("color: %d", Button_color_L);
 
 	ImGui::Text("mouse: %d", mouse_client_pos.x);
 	ImGui::Text("mouse: %d", mouse_client_pos.y);
@@ -1198,7 +1369,6 @@ void SceneTitle::DrawGUI()
 	ImGui::DragFloat2("Name Position", &namePos.x, 1.0f);      // 位置調整
 	ImGui::SliderFloat("Name Scale", &nameScale, 0.01f, 1.0f); // サイズ調整
 
-
 	if (ImGui::CollapsingHeader("Ranking UI Layout"))
 	{
 		ImGui::Text("--- General ---");
@@ -1212,6 +1382,26 @@ void SceneTitle::DrawGUI()
 		ImGui::DragFloat("Name X", &rankingNamePosX, 1.0f);
 		ImGui::DragFloat("Time X", &rankingTimePosX, 1.0f);
 		ImGui::DragFloat("Kills X", &rankingKillsPosX, 1.0f);
+	}
+
+	if (ImGui::CollapsingHeader("Title Sprites Settings"))
+	{
+		auto EditTransform = [](const char* label, TransformData& tf) {
+			ImGui::PushID(label);
+			ImGui::Text("%s", label);
+			ImGui::DragFloat2("Position", &tf.pos.x, 1.0f);
+			ImGui::DragFloat2("Size", &tf.size.x, 1.0f);
+			ImGui::SliderFloat("Rotation", &tf.rotation, -180.0f, 180.0f);
+			ImGui::ColorEdit4("Color", &tf.color.x);
+			ImGui::Separator();
+			ImGui::PopID();
+			};
+
+		EditTransform("Juni (Order)", tf_juni);
+		EditTransform("Saiko Time", tf_saikoTime);
+		EditTransform("Saiko Kill", tf_saikokill);
+		EditTransform("Kaisi (Start)", tf_kaisi);
+		EditTransform("namae (Order)", tf_namae);
 	}
 
 	ImGui::End();

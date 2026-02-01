@@ -3,14 +3,14 @@
 #include "SceneManager.h"
 #include "shader.h"
 #include "texture.h"
-#include <cstdlib>  
+#include <cstdlib>
 #include <cmath>
 #include <algorithm>
 
 #undef min
 #undef max
 
-static const float TUTORIAL_STAGE_LENGTH = 380.0f;
+static const float TUTORIAL_STAGE_LENGTH = 180.0f;
 
 static int tutorialDefeatedRed = 0;
 static int tutorialDefeatedBlue = 0;
@@ -22,28 +22,26 @@ SceneTutorial::SceneTutorial(HWND hwnd, framework* fw) : hwnd(hwnd), fw_(fw)
 void SceneTutorial::Initialize()
 {
 	HRESULT hr{ S_OK };
-
+	ShowCursor(FALSE);
 
 	skinned_meshes[0] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\player_run.cereal");
 	skinned_meshes[1] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\enemy_red_run.cereal");
 	skinned_meshes[2] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\main_stage.cereal");
-	skinned_meshes[3] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\cube.000.cereal");
-	skinned_meshes[4] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\Obstacles4.cereal");
+	skinned_meshes[4] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\Obstacles.cereal");
 	skinned_meshes[5] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\enemy_blue_run.cereal");
 	skinned_meshes[6] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\player_slide.cereal");
-	skinned_meshes[7] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\player_attack3.cereal");
-	skinned_meshes[8] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\player_knocked1.cereal");
-	skinned_meshes[9] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\player_up3.cereal");
-	skinned_meshes[10] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\player_jump2.cereal");
-	skinned_meshes[11] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\enemy_red_kicking1.cereal");
+	skinned_meshes[7] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\player_attack.cereal");
+	skinned_meshes[8] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\player_knocked.cereal");
+	skinned_meshes[9] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\player_up.cereal");
+	skinned_meshes[10] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\player_jump.cereal");
+	skinned_meshes[11] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\enemy_red_kick.cereal");
 
 	sprite_batches[0] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\fontS.png", 1);
-	sprite_batches[1] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\text.png", 1);
-	sprite_batches[2] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\text1.png", 1);
-	sprite_batches[3] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\text2.png", 1);
-	sprite_batches[4] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\text3.png", 1);
-	sprite_batches[5] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\text5.png", 1);
-
+	sprite_batches[1] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\tutorial\\text.dds", 1);
+	sprite_batches[2] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\tutorial\\text1.dds", 1);
+	sprite_batches[3] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\tutorial\\text2.dds", 1);
+	sprite_batches[4] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\tutorial\\text3.dds", 1);
+	sprite_batches[5] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\tutorial\\text4.dds", 1);
 
 	SE_PANCHI = Audio::Instance().LoadAudioSource(".\\resources\\panchi.wav");
 	SE_KICK = Audio::Instance().LoadAudioSource(".\\resources\\kick.wav");
@@ -54,7 +52,7 @@ void SceneTutorial::Initialize()
 
 	player.position = { 0, 0, 0 };
 	player.currentLane = 1;
-	player.moveSpeed = 10.0f;
+	player.moveSpeed = 15.0f;
 	player.isGround = true;
 	player.knockbackTimer = 0.0f;
 
@@ -69,7 +67,7 @@ void SceneTutorial::Initialize()
 		stages.push_back(s);
 	}
 
-	fw_->light_direction = DirectX::XMFLOAT4{ 1.0f, -1.0f, 1.0f, 0.0f };
+	fw_->light_direction = DirectX::XMFLOAT4{ 0.0f, -1.0f, 1.0f, 0.0f };
 
 	currentStep = TutorialStep::Welcome;
 	stepTimer = 0.0f;
@@ -95,6 +93,7 @@ void SceneTutorial::Initialize()
 
 void SceneTutorial::Finalize()
 {
+	ShowCursor(TRUE);
 	for (auto& m : skinned_meshes) m.reset();
 	sprite_batches[0].reset();
 	sprite_batches[1].reset();
@@ -108,7 +107,7 @@ void SceneTutorial::Finalize()
 	if (SE_MISS) { delete SE_MISS; SE_MISS = nullptr; }
 }
 
-void SceneTutorial::Update(float elapsedTime)
+void SceneTutorial::Update(float elapsed_time)
 {
 	float playerZ = player.position.z;
 	if (!stages.empty())
@@ -125,21 +124,21 @@ void SceneTutorial::Update(float elapsedTime)
 		}
 	}
 
-	UpdatePlayer(elapsedTime);
+	UpdatePlayer(elapsed_time);
 	InputAttack();
 
 	for (auto& enemy : enemies)
 	{
 		if (enemy.isBlownAway)
 		{
-			enemy.blowVelocity.y -= 40.0f * elapsedTime;
+			enemy.blowVelocity.y -= 40.0f * elapsed_time;
 
-			enemy.position.x += enemy.blowVelocity.x * elapsedTime;
-			enemy.position.y += enemy.blowVelocity.y * elapsedTime;
-			enemy.position.z += enemy.blowVelocity.z * elapsedTime;
+			enemy.position.x += enemy.blowVelocity.x * elapsed_time;
+			enemy.position.y += enemy.blowVelocity.y * elapsed_time;
+			enemy.position.z += enemy.blowVelocity.z * elapsed_time;
 
-			enemy.blowAngleX += 720.0f * elapsedTime;
-			enemy.blowAngleY += 360.0f * elapsedTime;
+			enemy.blowAngleX += 720.0f * elapsed_time;
+			enemy.blowAngleY += 360.0f * elapsed_time;
 
 			if (enemy.position.y < -20.0f)
 			{
@@ -148,8 +147,8 @@ void SceneTutorial::Update(float elapsedTime)
 		}
 	}
 
-	UpdateTutorialFlow(elapsedTime);
-	UpdateCamera(elapsedTime);
+	UpdateTutorialFlow(elapsed_time);
+	UpdateCamera(elapsed_time);
 
 	if (player.knockbackTimer <= 0.0f && knockState == KnockState::None)
 	{
@@ -180,10 +179,9 @@ void SceneTutorial::Update(float elapsedTime)
 	}
 }
 
-void SceneTutorial::UpdateTutorialFlow(float elapsedTime)
+void SceneTutorial::UpdateTutorialFlow(float elapsed_time)
 {
-	stepTimer += elapsedTime;
-
+	stepTimer += elapsed_time;
 	switch (currentStep)
 	{
 	case TutorialStep::Welcome:
@@ -217,7 +215,6 @@ void SceneTutorial::UpdateTutorialFlow(float elapsedTime)
 		if (player.position.y > 1.0f) actionDone = true;
 		if (enemies.empty() || enemies[0].position.z < player.position.z - 5.0f)
 		{
-
 			if (!enemies.empty()) enemies.clear();
 			if (!actionDone) SpawnObstacle();
 
@@ -281,12 +278,11 @@ void SceneTutorial::UpdateTutorialFlow(float elapsedTime)
 		prevStep = currentStep;
 	}
 
-	tutorialTextTimer += elapsedTime;
+	tutorialTextTimer += elapsed_time;
 
 	// スケールイン（イージング）
 	float t = std::min(tutorialTextTimer / 0.4f, 1.0f);
 	tutorialTextScale = 0.8f + (1.0f - 0.8f) * (1.0f - powf(1.0f - t, 3));
-
 }
 
 void SceneTutorial::SpawnObstacle()
@@ -319,13 +315,13 @@ void SceneTutorial::SpawnDummyEnemy()
 	}
 }
 
-void SceneTutorial::UpdatePlayer(float elaspedTime)
+void SceneTutorial::UpdatePlayer(float elapsed_time)
 {
 	if (player.knockbackTimer > 0.0f)
 	{
-		player.knockbackTimer -= elaspedTime;
-		player.position.z += player.knockbackVelocityZ * elaspedTime;
-		player.knockbackVelocityZ += 20.0f * elaspedTime;
+		player.knockbackTimer -= elapsed_time;
+		player.position.z += player.knockbackVelocityZ * elapsed_time;
+		player.knockbackVelocityZ += 20.0f * elapsed_time;
 		if (player.knockbackVelocityZ > 0.0f) player.knockbackVelocityZ = 0.0f;
 	}
 
@@ -347,7 +343,7 @@ void SceneTutorial::UpdatePlayer(float elaspedTime)
 		float diff = targetX - player.position.x;
 		if (fabsf(diff) > 0.01f)
 		{
-			float moveStep = (diff > 0 ? 1.0f : -1.0f) * player.laneChangeSpeed * elaspedTime;
+			float moveStep = (diff > 0 ? 1.0f : -1.0f) * player.laneChangeSpeed * elapsed_time;
 			if (fabsf(moveStep) > fabsf(diff)) player.position.x = targetX;
 			else player.position.x += moveStep;
 		}
@@ -356,7 +352,7 @@ void SceneTutorial::UpdatePlayer(float elaspedTime)
 			player.position.x = targetX;
 		}
 
-		player.position.z += player.moveSpeed * elaspedTime;
+		player.position.z += player.moveSpeed * elapsed_time;
 
 		if ((GetAsyncKeyState(VK_SPACE) & 0x8000) && player.isGround && !attack_state)
 		{
@@ -373,8 +369,8 @@ void SceneTutorial::UpdatePlayer(float elaspedTime)
 		player.wasRightPressed = false;
 	}
 
-	player.velocity.y += player.gravity * elaspedTime;
-	player.position.y += player.velocity.y * elaspedTime;
+	player.velocity.y += player.gravity * elapsed_time;
+	player.position.y += player.velocity.y * elapsed_time;
 
 	if (player.position.y <= 0.0f)
 	{
@@ -387,7 +383,7 @@ void SceneTutorial::UpdatePlayer(float elaspedTime)
 	{
 		animation& anim = skinned_meshes[0]->animation_clips[player_anim_index];
 
-		player_anim_time += elaspedTime;
+		player_anim_time += elapsed_time;
 
 		int frame =
 			static_cast<int>(player_anim_time * anim.sampling_rate);
@@ -426,7 +422,7 @@ void SceneTutorial::UpdatePlayer(float elaspedTime)
 
 		animation& anim = mesh->animation_clips[0];
 
-		*time += elaspedTime;
+		*time += elapsed_time;
 		int frame = static_cast<int>(*time * anim.sampling_rate);
 
 		if (frame >= (int)anim.sequence.size())
@@ -448,10 +444,6 @@ void SceneTutorial::UpdatePlayer(float elaspedTime)
 		enemy.keyframe = anim.sequence[frame];
 	}
 
-
-
-
-
 	if (isSlide && skinned_meshes[6] && !skinned_meshes[6]->animation_clips.empty())
 	{
 		blurFade = 1.0f;
@@ -460,10 +452,10 @@ void SceneTutorial::UpdatePlayer(float elaspedTime)
 		fw_->radial_blur_data.blur_radius = 1.0f * blurFade;
 		fw_->radial_blur_data.blur_decay = 0.0f;
 
-		slideTimer += elaspedTime;
+		slideTimer += elapsed_time;
 
 		animation& anim = skinned_meshes[6]->animation_clips[0];
-		slide_anim_time += elaspedTime;
+		slide_anim_time += elapsed_time;
 
 		int frame = static_cast<int>(slide_anim_time * anim.sampling_rate);
 		if (frame >= static_cast<int>(anim.sequence.size()))
@@ -473,7 +465,7 @@ void SceneTutorial::UpdatePlayer(float elaspedTime)
 
 		player.keyframe = anim.sequence[frame];
 
-		const float SLIDE_DURATION = 1.5f;
+		const float SLIDE_DURATION = 0.75f;
 
 		if (slideTimer >= SLIDE_DURATION)
 		{
@@ -485,7 +477,7 @@ void SceneTutorial::UpdatePlayer(float elaspedTime)
 		return;
 	}
 
-	blurFade -= elaspedTime * BLUR_FADE_SPEED;
+	blurFade -= elapsed_time * BLUR_FADE_SPEED;
 	blurFade = std::clamp(blurFade, 0.0f, 1.0f);
 
 	float eased = 1.0f - powf(1.0f - blurFade, 2.0f);
@@ -496,12 +488,12 @@ void SceneTutorial::UpdatePlayer(float elaspedTime)
 
 	if (isAttackAnim && skinned_meshes[7] && !skinned_meshes[7]->animation_clips.empty())
 	{
-		attackAnimTimer += elaspedTime;
+		attackAnimTimer += elapsed_time;
 
 		animation& anim = skinned_meshes[7]->animation_clips[0];
 
 		const float ATTACK_ANIM_SPEED = 1.5f;
-		attack_anim_time += elaspedTime * ATTACK_ANIM_SPEED;
+		attack_anim_time += elapsed_time * ATTACK_ANIM_SPEED;
 
 		int frame = static_cast<int>(attack_anim_time * anim.sampling_rate);
 		if (frame >= static_cast<int>(anim.sequence.size()))
@@ -530,7 +522,7 @@ void SceneTutorial::UpdatePlayer(float elaspedTime)
 		{
 			animation& anim = skinned_meshes[8]->animation_clips[0];
 
-			knocked_anim_time += elaspedTime * KNOCKED_ANIM_SPEED;
+			knocked_anim_time += elapsed_time * KNOCKED_ANIM_SPEED;
 			int frame = static_cast<int>(knocked_anim_time * anim.sampling_rate);
 
 			if (frame >= static_cast<int>(anim.sequence.size()) - 1)
@@ -553,7 +545,7 @@ void SceneTutorial::UpdatePlayer(float elaspedTime)
 		{
 			animation& anim = skinned_meshes[9]->animation_clips[0];
 
-			knocked_anim_time += elaspedTime * RECOVER_ANIM_SPEED;
+			knocked_anim_time += elapsed_time * RECOVER_ANIM_SPEED;
 			int frame = static_cast<int>(knocked_anim_time * anim.sampling_rate);
 
 			if (frame >= static_cast<int>(anim.sequence.size()))
@@ -571,7 +563,7 @@ void SceneTutorial::UpdatePlayer(float elaspedTime)
 	}
 	if (knockBlurTimer > 0.0f)
 	{
-		knockBlurTimer -= elaspedTime;
+		knockBlurTimer -= elapsed_time;
 
 		float k = knockBlurTimer / 0.3f;
 		fw_->radial_blur_data.blur_strength = 0.35f * k;
@@ -584,7 +576,7 @@ void SceneTutorial::UpdatePlayer(float elaspedTime)
 
 		const float JUMP_ANIM_DURATION = 1.0f;
 
-		jump_anim_time += elaspedTime;
+		jump_anim_time += elapsed_time;
 
 		float t = jump_anim_time / JUMP_ANIM_DURATION;
 		t = std::clamp(t, 0.0f, 1.0f);
@@ -682,7 +674,7 @@ void SceneTutorial::InputAttack()
 	prevRButton = nowRButton;
 }
 
-void SceneTutorial::UpdateCamera(float elapsedTime)
+void SceneTutorial::UpdateCamera(float elapsed_time)
 {
 	camera_focus = player.position;
 	camera_focus.y += 2.0f;
@@ -693,10 +685,9 @@ void SceneTutorial::UpdateCamera(float elapsedTime)
 
 	DirectX::XMStoreFloat3(&camera_position, DirectX::XMVectorSubtract(Focus, Offset));
 
-
 	if (shakeTimer > 0.0f)
 	{
-		shakeTimer -= elapsedTime;
+		shakeTimer -= elapsed_time;
 
 		float t = shakeTimer * 20.0f;
 		float shakeX = (sinf(t * 12.3f)) * shakePower;
@@ -707,7 +698,7 @@ void SceneTutorial::UpdateCamera(float elapsedTime)
 	}
 	if (cameraKickBack > 0.0f)
 	{
-		cameraKickBack -= elapsedTime * 8.0f;
+		cameraKickBack -= elapsed_time * 8.0f;
 	}
 	cameraKickBack = (cameraKickBack < 0.0f) ? 0.0f : cameraKickBack;
 
@@ -831,7 +822,6 @@ void SceneTutorial::Render()
 					&enemy.keyframe,
 					true
 				);
-
 			}
 		}
 
@@ -936,10 +926,7 @@ void SceneTutorial::DrawNumber(int number, float x, float y, float scale, ID3D11
 		);
 
 		sprite_batches[spriteIndex]->end(ctx);
-
 	}
-
-
 }
 
 void SceneTutorial::DrawGUI()

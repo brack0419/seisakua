@@ -20,9 +20,9 @@ public:
 
 	//èIóπâª
 	void Finalize()override;
-
+	
 	//çXêVèàóù
-	void Update(float elaspedTime)override;
+	void Update(float elapsed_time)override;
 
 	//ï`âÊèàóù
 	void Render()override;
@@ -33,6 +33,10 @@ public:
 	std::unique_ptr<skinned_mesh> skinned_meshes[8];
 
 	std::unique_ptr<sprite> sprite_end;
+
+	std::unique_ptr<sprite> sprite_button[2];
+
+	std::unique_ptr<sprite> sprite_score[3];
 
 	std::unique_ptr<sprite_batch> font_batch;
 
@@ -69,7 +73,11 @@ public:
 	DirectX::XMFLOAT2 timePosition = { 1340.0f,820.0f };
 	DirectX::XMFLOAT2 Pos = { 1100.0f, 20.0f };
 	DirectX::XMFLOAT2 scalePos = { 780.0f, 1050.0f };
+	DirectX::XMFLOAT2 rankPos = { 875.0f, 120.0f };
+	DirectX::XMFLOAT2 scaleRank = { 780.0f / 4, 1050.0f / 4 };
 
+	DirectX::XMFLOAT2 buttonPos = { 200.0f, 790.0f };
+	DirectX::XMFLOAT2 buttonScale = { 335.0f, 185.0f };
 	float timeScale = 0.3f;
 	int defeatedEnemies = 0;
 	int maxSpeed = 0;
@@ -95,12 +103,25 @@ public:
 	POINT cursor_position;
 	float wheel{ 0 };
 	float distance{ 0.1f };
+	float buttonAnimTimeL = 0.0f;
+	float buttonAnimTimeR = 0.0f;
 
+	float Button_color_L = 1.0f;
+	float Button_color_R = 1.0f;
 	float player_anim_time = 0.0f;
 	int   player_anim_index = 1;
 	float enemy_anim_time = 0.0f;
 	int   enemy_anim_index = 0;
 
+	float PingPong(float t)
+	{
+		float v = fmodf(t, 2.0f);
+		return 1.0f - fabsf(v - 1.0f);
+	}
+	float EaseOutCubic(float x)
+	{
+		return 1.0f - powf(1.0f - x, 3.0f);
+	}
 	float Clamp01(float v)
 	{
 		if (v < 0.0f) return 0.0f;

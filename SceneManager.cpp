@@ -1,7 +1,7 @@
 #include "SceneManager.h"
 
 //XVˆ—
-void SceneManager::Update(float elapsedTime)
+void SceneManager::Update(float elapsed_time)
 {
 	if (nextScene != nullptr)
 	{
@@ -20,7 +20,7 @@ void SceneManager::Update(float elapsedTime)
 	}
 	if (currentScene != nullptr)
 	{
-		currentScene->Update(elapsedTime);
+		currentScene->Update(elapsed_time);
 	}
 }
 

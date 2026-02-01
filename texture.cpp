@@ -17,7 +17,6 @@ using namespace std;
 #include <filesystem>
 #include <DDSTextureLoader.h>
 
-
 HRESULT make_dummy_texture(ID3D11Device* device, ID3D11ShaderResourceView** shader_resource_view, DWORD value, UINT dimension);
 
 static map<wstring, ComPtr<ID3D11ShaderResourceView>> resources;
@@ -84,7 +83,7 @@ HRESULT load_texture_from_file(ID3D11Device* device, const wchar_t* filename, ID
 			}
 		}
 	}
-
+	if (FAILED(hr)) { OutputDebugStringW(L"\n========================================\n"); OutputDebugStringW(L"Error: Texture Not Found: "); OutputDebugStringW(filename); OutputDebugStringW(L"\n========================================\n"); }
 	// 最終確認: ここで hr が失敗状態だと Assert で止まる
 	// ダミー生成が成功していれば hr は S_OK になっているはず
 	_ASSERT_EXPR(SUCCEEDED(hr), hr_trace(hr));

@@ -49,9 +49,7 @@ void SceneLoading::Initialize()
 	std::uniform_real_distribution<float> posX(-40.0f, 40.0f);
 	std::uniform_real_distribution<float> posY(-22.0f, 22.0f);
 
-
 	std::uniform_real_distribution<float> posZ(5.0f, 25.0f);
-
 
 	std::uniform_real_distribution<float> vel(-0.1f, 0.1f);
 	std::uniform_real_distribution<float> phase(0.0f, DirectX::XM_2PI);
@@ -74,37 +72,34 @@ void SceneLoading::Initialize()
 
 		instances[i].phase = phase(gen);
 	}
-
-
-
 }
 
 //終了化
 void SceneLoading::Finalize()
 {
-	//スレッド終了化
+	// スレッド終了化
 	if (thread != nullptr)
 	{
-		thread->join();
-		delete thread;
-		thread = nullptr;
+		thread->join();  // スレッド終了待機
+		delete thread;   // メモリ解放
+		thread = nullptr;  // スレッドポインタをNULLに
 	}
 
-	//スプライト終了化
-	//if (sprite != nullptr)
-	//{
-	//	delete sprite;
-	//	sprite = nullptr;
-	//}
-	ShowCursor(FALSE);
-	skinned_meshes[1].reset();
+	// メッシュの解放
+	for (auto& mesh : skinned_meshes)
+	{
+		mesh.reset();  // 各メッシュをリセット
+	}
+
+	// スプライト関連や他のリソースも解放
+	ShowCursor(FALSE);  // カーソルを再表示
 }
 
 //更新処理
-void SceneLoading::Update(float elapsedTime)
+void SceneLoading::Update(float elapsed_time)
 {
 	constexpr float speed = 180;
-	angle += speed * elapsedTime;
+	angle += speed * elapsed_time;
 
 	for (int i = 0; i < MESH_COUNT; ++i)
 	{
@@ -113,7 +108,7 @@ void SceneLoading::Update(float elapsedTime)
 
 		animation& anim = skinned_meshes[i]->animation_clips[anim_indices[i]];
 
-		anim_times[i] += elapsedTime;
+		anim_times[i] += elapsed_time;
 
 		int frame = static_cast<int>(anim_times[i] * anim.sampling_rate);
 		if (frame >= static_cast<int>(anim.sequence.size()))
@@ -132,10 +127,10 @@ void SceneLoading::Update(float elapsedTime)
 	}
 	for (int i = 0; i < MESH_COUNT; ++i)
 	{
-		modelPos[i].x += modelVel[i].x * elapsedTime;
-		modelPos[i].y += modelVel[i].y * elapsedTime;
+		modelPos[i].x += modelVel[i].x * elapsed_time;
+		modelPos[i].y += modelVel[i].y * elapsed_time;
 
-		floatPhase[i] += elapsedTime;
+		floatPhase[i] += elapsed_time;
 
 		// ごく弱い無重力ゆらぎ
 		modelPos[i].y += sinf(floatPhase[i]) * 0.004f;
@@ -147,11 +142,11 @@ void SceneLoading::Update(float elapsedTime)
 	{
 		auto& inst = instances[i];
 
-		inst.phase += elapsedTime;
+		inst.phase += elapsed_time;
 
 		// 中心をゆっくり動かす
-		inst.centerPos.x += inst.velocity.x * elapsedTime;
-		inst.centerPos.y += inst.velocity.y * elapsedTime;
+		inst.centerPos.x += inst.velocity.x * elapsed_time;
+		inst.centerPos.y += inst.velocity.y * elapsed_time;
 
 		// 外に行きすぎたら少し戻す（超重要）
 		if (fabs(inst.centerPos.x) > 55.0f)
@@ -159,7 +154,6 @@ void SceneLoading::Update(float elapsedTime)
 
 		if (fabs(inst.centerPos.y) > 32.0f)
 			inst.velocity.y *= -1.0f;
-
 	}
 
 	POINT mouse;
@@ -214,7 +208,6 @@ void SceneLoading::Update(float elapsedTime)
 		inst.centerPos.x += inst.velocity.x;
 		inst.centerPos.y += inst.velocity.y;
 
-
 		// --- 画面外に出すぎた場合の安全策（任意） ---
 		// あまりに遠くへ行き過ぎたら、中心方向へ微弱な力を加えるか
 		// 画面端で跳ね返る処理を入れると、ローディング中に全消えするのを防げます
@@ -228,7 +221,7 @@ void SceneLoading::Update(float elapsedTime)
 		animation& anim = skinned_meshes[8]->animation_clips[0];
 
 		// 経過時間でフレームを進める
-		mesh8AnimTime += elapsedTime;
+		mesh8AnimTime += elapsed_time;
 
 		int frame = static_cast<int>(mesh8AnimTime * anim.sampling_rate);
 		if (frame >= static_cast<int>(anim.sequence.size()))
@@ -240,12 +233,8 @@ void SceneLoading::Update(float elapsedTime)
 		mesh8Keyframe = anim.sequence[frame];
 	}
 
-
-
 	// 任意で浮かせたい場合
-	mesh8FloatPhase += elapsedTime;
-
-
+	mesh8FloatPhase += elapsed_time;
 }
 
 //描画処理
@@ -376,13 +365,7 @@ void SceneLoading::Render()
 				false
 			);
 		}
-
-
-
-
 	}
-
-
 
 	fw_->framebuffers[0]->deactivate(fw_->immediate_context.Get());
 

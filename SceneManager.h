@@ -18,7 +18,7 @@ public:
 	}
 
 	//XVˆ—
-	void Update(float elapsedTime);
+	void Update(float elapsed_time);
 
 	//•`‰æˆ—
 	void Render();

@@ -14,7 +14,7 @@ public:
 	virtual void Finalize() = 0;
 
 	//XVˆ—
-	virtual void Update(float elaspedTime) = 0;
+	virtual void Update(float elapsed_time) = 0;
 
 	//•`‰æˆ—
 	virtual void Render() = 0;
