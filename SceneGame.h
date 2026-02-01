@@ -8,21 +8,23 @@
 
 #define P_ACCELE 5.0f
 
-
-
 class SceneGame : public Scene
 {
 public:
+
+	float kariN = 7.0f;
+	float kariScale = 0.2f;
+	DirectX::XMFLOAT2 kariPos = { 130.0f,930.0f };;
+
 	// =========================
 	// 定数・状態
 	// =========================
-	float speedScale = 0.2f;
-	DirectX::XMFLOAT2 speedPos = { 130.0f,930.0f };;
+	const float GOAL_DISTANCE = 4000.0f;
+	float speedScale = 0.17f;
+	DirectX::XMFLOAT2 speedPos = { 137.0f,942.0f };;
 
-	float MScale = 0.2f;
-	DirectX::XMFLOAT2 MPos = { 1450.0f,930.0f };;
-
-	const float GOAL_DISTANCE = 1200.0f;
+	float MScale = 0.17f;
+	DirectX::XMFLOAT2 MPos = { 1569.0f,945.0f };;
 
 	DirectX::XMFLOAT4 attack_c = { 1.0f, 1.0f, 1.0f, 1.0f };
 
@@ -122,7 +124,7 @@ public:
 	void Render() override;
 	void DrawGUI() override;
 
-	void DrawNumber(int number, float x, float y, float scale,int sukima, ID3D11DeviceContext* ctx);
+	void DrawNumber(int number, float x, float y, float scale, int sukima, ID3D11DeviceContext* ctx);
 
 private:
 	// =========================
@@ -172,23 +174,33 @@ private:
 	enum class EnemyAnimState
 	{
 		Run,
-		Kick
+		Kick,
+		Hit
 	};
+
 	struct Enemy
 	{
 		DirectX::XMFLOAT3 position{};
+
 		bool isAlive = true;
 		int type = 0;
-		animation::keyframe keyframe;
-		float animationTime = 0.0f;
+
+		// ===== アニメ =====
 		EnemyAnimState animState = EnemyAnimState::Run;
-		bool isHitAnim = false;
+
+		float runAnimTime = 0.0f;
+		float kickAnimTime = 0.0f;		
 		float hitAnimTime = 0.0f;
-		bool isBlownAway = false;                 // 吹き飛び中フラグ
-		DirectX::XMFLOAT3 blowVelocity{ 0, 0, 0 }; // 吹き飛び速度
-		float blowAngleX = 0.0f;                  // 回転角度
+
+		animation::keyframe keyframe;
+
+		// ===== 吹き飛び =====
+		bool isBlownAway = false;
+		DirectX::XMFLOAT3 blowVelocity{ 0,0,0 };
+		float blowAngleX = 0.0f;
 		float blowAngleY = 0.0f;
 	};
+
 	std::vector<Enemy> enemies;
 
 	struct StageObject { DirectX::XMFLOAT3 position{}; };

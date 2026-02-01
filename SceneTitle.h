@@ -12,6 +12,10 @@
 class SceneTitle : public Scene
 {
 public:
+	int music_Num = 0;
+
+	float kariScale = 0.2f;
+	DirectX::XMFLOAT2 kariPos = { 130.0f,930.0f };
 	// =========================
 	// ctor / dtor
 	// =========================
@@ -27,11 +31,19 @@ public:
 	void Render() override;
 	void DrawGUI() override;
 
+	void DrawNumber(int number, float x, float y, float scale, int sukima, ID3D11DeviceContext* ctx);
+
 	// =========================
 	// Graphics resources
 	// =========================
+	AudioSource* bgmGame[5] = {};
+
+
 	std::unique_ptr<skinned_mesh>  skinned_meshes[15];
 	std::unique_ptr<sprite_batch>  sprite_batches[30];
+	std::unique_ptr<sprite_batch>  Spr_botan[3];
+	std::unique_ptr<sprite_batch>  Spr_music[10];
+
 	Microsoft::WRL::ComPtr<ID3D11PixelShader> effect_shaders[2];
 
 	enum class SAMPLER_STATE

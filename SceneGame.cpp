@@ -45,12 +45,16 @@ void SceneGame::Initialize()
 
 
 	sprite_batches[0] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\fontN.png", 1);
+	sprite_batches[1] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\Sprspeed.png", 1);
+	sprite_batches[2] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\SprM.png", 1);
 
 	auto& audio = Audio::Instance();
 	SE_PANCHI = audio.LoadAudioSource(".\\resources\\panchi.wav");
 	SE_KICK = audio.LoadAudioSource(".\\resources\\kick.wav");
 	SE_MISS = audio.LoadAudioSource(".\\resources\\miss.wav");
 	bgmGame = audio.LoadAudioSource(".\\resources\\スティックマンの冒険.wav");
+	if (bgmGame) bgmGame->Play(true);
+
 
 	// スケール設定
 	playerScale = { 0.02f, 0.02f, 0.02f };
@@ -114,7 +118,7 @@ void SceneGame::Finalize()
 // 更新処理
 void SceneGame::Update(float elapsedTime)
 {
-	ShowCursor(FALSE);
+	ShowCursor(TRUE);
 	gameTime += elapsedTime;
 
 	if (saveSpeed <= player.moveSpeed)
@@ -278,34 +282,23 @@ void SceneGame::UpdatePlayer(float elaspedTime)
 
 	for (auto& enemy : enemies)
 	{
-		if (!enemy.isAlive) continue;
-		if (enemy.type == 2) continue; // 岩はアニメなし
+		if (!enemy.isAlive || enemy.type == 2) continue;
 
 		skinned_mesh* mesh = nullptr;
 		float* time = nullptr;
 
-		// -----------------------------
-		// メッシュ＆時間の選択
-		// -----------------------------
-		if (enemy.type == 0)
+		// -------------------------
+		// 状態ごとに完全分離
+		// -------------------------
+		if (enemy.animState == EnemyAnimState::Kick)
 		{
-			// 通常敵
-			if (enemy.isHitAnim)
-			{
-				mesh = skinned_meshes[11].get(); // ヒット
-				time = &enemy.hitAnimTime;
-			}
-			else
-			{
-				mesh = skinned_meshes[1].get();  // 通常
-				time = &enemy.animationTime;
-			}
+			mesh = skinned_meshes[11].get(); // キック
+			time = &enemy.kickAnimTime;
 		}
 		else
 		{
-			// type != 0 は今まで通り mesh[5]
-			mesh = skinned_meshes[5].get();
-			time = &enemy.animationTime;
+			mesh = skinned_meshes[enemy.type == 0 ? 1 : 5].get(); // 通常走り
+			time = &enemy.runAnimTime;
 		}
 
 		if (!mesh || mesh->animation_clips.empty()) continue;
@@ -316,25 +309,22 @@ void SceneGame::UpdatePlayer(float elaspedTime)
 		// 時間更新
 		// -----------------------------
 		*time += elaspedTime;
-
-		int frame = static_cast<int>((*time) * anim.sampling_rate);
-
+		int frame = static_cast<int>(*time * anim.sampling_rate);
 		// -----------------------------
 		// 再生終了処理
 		// -----------------------------
-		if (frame >= static_cast<int>(anim.sequence.size()))
+		if (frame >= (int)anim.sequence.size())
 		{
-			if (enemy.type == 0 && enemy.isHitAnim)
+			if (enemy.animState == EnemyAnimState::Kick)
 			{
-				// ヒット終了 → 通常へ
-				enemy.isHitAnim = false;
-				enemy.hitAnimTime = 0.0f;
-				enemy.animationTime = 0.0f;
+				// ★ キック終了 → 走りへ
+				enemy.animState = EnemyAnimState::Run;
+				enemy.kickAnimTime = 0.0f;
+				enemy.runAnimTime = 0.0f;
 				continue;
 			}
 			else
 			{
-				// ループ
 				*time = 0.0f;
 				frame = 0;
 			}
@@ -365,10 +355,8 @@ void SceneGame::UpdatePlayer(float elaspedTime)
 		slideTimer += elaspedTime;
 
 		animation& anim = skinned_meshes[6]->animation_clips[0];
+		slide_anim_time += elaspedTime;
 
-		// ★変更点1: アニメーションの再生速度を上げる (例: 1.0f → 2.0f で2倍速)
-		float playSpeed = 2.0f;
-		slide_anim_time += elaspedTime * playSpeed;
 
 		int frame = static_cast<int>(slide_anim_time * anim.sampling_rate);
 		if (frame >= static_cast<int>(anim.sequence.size()))
@@ -638,7 +626,7 @@ void SceneGame::InputAttack()
 	{
 		attack_timer++;
 		if (attack_timer == 20) attack_hit_enable = false;
-		if (attack_timer >= 2)
+		if (attack_timer >= 30)
 		{
 			attack_state = false;
 			attack_type = AttackType::None;
@@ -797,8 +785,9 @@ void SceneGame::CheckCollisions()
 			if (enemy.type == 0)
 			{
 				enemy.animState = EnemyAnimState::Kick;
-				enemy.animationTime = 0.0f;
+				enemy.kickAnimTime = 0.0f;
 			}
+
 
 			knockState = KnockState::Knocked;
 			knocked_anim_time = 0.0f;
@@ -965,7 +954,7 @@ void SceneGame::Render()
 				enemyMesh->render(
 					fw_->immediate_context.Get(),
 					world,
-					{ 1,1,1,1 },   // 色は共通でOK
+					{ 1,1,1,1 },
 					&enemy.keyframe,
 					true
 				);
@@ -1042,13 +1031,33 @@ void SceneGame::Render()
 	}
 
 	int speed = static_cast<int>(player.moveSpeed / P_ACCELE);
-	DrawNumber(speed, speedPos.x, speedPos.y, speedScale, 5, fw_->immediate_context.Get());
+	DrawNumber(speed, speedPos.x, speedPos.y, speedScale, 8, fw_->immediate_context.Get());
 
 	int remainDistance = static_cast<int>(std::max(0.0f, GOAL_DISTANCE - player.position.z));
 
 	// 画面右上に距離を表示
 
-	DrawNumber(remainDistance, MPos.x, MPos.y, MScale, 5, fw_->immediate_context.Get());
+	DrawNumber(remainDistance, MPos.x, MPos.y, MScale, 9, fw_->immediate_context.Get());
+
+	sprite_batches[1]->begin(fw_->immediate_context.Get());
+	sprite_batches[1]->render(
+		fw_->immediate_context.Get(),
+		-10.0f, 893.0f,
+		1700 * 0.25f, 700 * 0.25f,
+		1, 1, 1, 1,
+		0.0f
+	);
+	sprite_batches[1]->end(fw_->immediate_context.Get());
+
+	sprite_batches[2]->begin(fw_->immediate_context.Get());
+	sprite_batches[2]->render(
+		fw_->immediate_context.Get(),
+		1412.0f, 887.0f,
+		2082 * 0.24f, 790 * 0.24f,
+		1, 1, 1, 1,
+		0.0f
+	);
+	sprite_batches[2]->end(fw_->immediate_context.Get());
 }
 
 void SceneGame::DrawGUI()
@@ -1064,6 +1073,10 @@ void SceneGame::DrawGUI()
 		&playerColor.x,
 		ImGuiColorEditFlags_Float
 	);
+	ImGui::Text("--- kari Display ---");
+	ImGui::DragFloat2("kari Pos", &kariPos.x, 1.0f);
+	ImGui::DragFloat("kari Scale", &kariScale, 0.01f);
+	ImGui::DragFloat("kari N", &kariN, 0.01f);
 
 	ImGui::Text("--- speed Display ---");
 	ImGui::DragFloat2("speed Pos", &speedPos.x, 1.0f);

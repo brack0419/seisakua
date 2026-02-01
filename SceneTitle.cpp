@@ -38,6 +38,10 @@ void SceneTitle::Initialize()
 
 	//sprite_batches[10] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\fontS.png", 1);
 
+	Spr_botan[0] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\fontN.png", 1);
+	Spr_botan[1] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\musicL.png", 1);
+	Spr_botan[2] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\musicR.png", 1);
+
 	for (int i = 0; i < 20; ++i)
 	{
 		wchar_t path[256];
@@ -208,6 +212,14 @@ void SceneTitle::Update(float elaspedTime)
 		//SceneManager::instance().ChangeScene(new SceneEnd(fw_, gameTime, defeatedCount));
 		return;
 	}
+	if (GetAsyncKeyState('E') & 0x8000)
+	{
+		SceneManager::instance().ChangeScene(new SceneEnd(fw_, 1, 1));
+
+		//SceneManager::instance().ChangeScene(new SceneEnd(fw_, gameTime, defeatedCount));
+		return;
+	}
+
 	DirectX::XMFLOAT4 final_color{};
 
 	if (!title_clicked)
@@ -725,6 +737,27 @@ void SceneTitle::Render()
 		rank++;
 	}
 
+	//DrawNumber(music_Num, 1708.0f, 981.0f, 0.2f, 8, fw_->immediate_context.Get());
+
+	Spr_botan[1]->begin(fw_->immediate_context.Get());
+	Spr_botan[1]->render(
+		fw_->immediate_context.Get(),
+		1609, 984,
+		500 * 0.18f, 500 * 0.18,
+		1, 1, 1, 1,
+		0.0f
+	);
+	Spr_botan[1]->end(fw_->immediate_context.Get());
+
+	Spr_botan[2]->begin(fw_->immediate_context.Get());
+	Spr_botan[2]->render(
+		fw_->immediate_context.Get(),
+		1823, 984,
+		500 * 0.18f, 500 * 0.18,
+		1, 1, 1, 1,
+		0.0f
+	);
+	Spr_botan[2]->end(fw_->immediate_context.Get());
 }
 
 
@@ -732,8 +765,8 @@ void SceneTitle::Render()
 void SceneTitle::DrawNumber(int number, float x, float y, float scale, ID3D11DeviceContext* ctx)
 {
 	// SceneGame.cpp の実装と同じもの。ただし使う sprite_batches のインデックスに注意
-	const float cellW = 256.0f;
-	const float cellH = 303.33f;
+	const float cellW = 507.0f;
+	const float cellH = 476.00f;
 
 	std::string str = std::to_string(number);
 	float posX = x;
@@ -749,8 +782,8 @@ void SceneTitle::DrawNumber(int number, float x, float y, float scale, ID3D11Dev
 		float sx = col * cellW;
 		float sy = row * cellH;
 
-		font_batch->begin(fw_->immediate_context.Get());
-		font_batch->render(
+		Spr_botan[0]->begin(fw_->immediate_context.Get());
+		Spr_botan[0]->render(
 			fw_->immediate_context.Get(),
 			posX, y,
 			cellW * scale, cellH * scale,
@@ -759,9 +792,9 @@ void SceneTitle::DrawNumber(int number, float x, float y, float scale, ID3D11Dev
 			sx, sy,
 			cellW, cellH
 		);
-		font_batch->end(fw_->immediate_context.Get());
+		Spr_botan[0]->end(fw_->immediate_context.Get());
 
-		//posX += (cellW * scale) * 0.7f;
+		posX += (cellW * scale);
 	}
 }
 
@@ -772,6 +805,19 @@ void SceneTitle::DrawGUI()
 	ImGui::Text("Current Model Index: %d", current_model_index);
 	ImGui::Text("Play Target Count: %d", play_target_count);
 	ImGui::Text("Play Current Count: %d", play_current_count);
+
+	POINT mouse_client_pos{};
+	GetCursorPos(&mouse_client_pos);
+
+	HWND hwnd = FindWindow(APPLICATION_NAME, L"");
+	ScreenToClient(hwnd, &mouse_client_pos);
+
+	ImGui::Text("mouse: %d", mouse_client_pos.x);
+	ImGui::Text("mouse: %d", mouse_client_pos.y);
+
+	ImGui::Text("--- kari Display ---");
+	ImGui::DragFloat2("kari Pos", &kariPos.x, 1.0f);
+	ImGui::DragFloat("kari Scale", &kariScale, 0.01f);
 
 	ImGui::DragFloat("Title Glow Intensity", &titleGlowIntensity, 0.01f, 0.0f, 10.0f);
 
