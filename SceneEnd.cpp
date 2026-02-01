@@ -8,10 +8,15 @@
 #include "framework.h"
 #include "sprite.h"
 
+#include <algorithm>
+#include <windows.h>
+
 extern float saveSpeed;
 
 extern int globalMaxKills;
 extern float globalBestTime;
+
+extern std::string globalPlayerName; // SceneTitleで設定した名前を参照
 
 SceneEnd::SceneEnd(framework* fw, float time, int enemyCount)
 	: fw_(fw), clearTime(time), defeatedEnemies(enemyCount)
@@ -36,12 +41,13 @@ void SceneEnd::Initialize()
 		globalBestTime = clearTime;
 	}
 
-	skinned_meshes[0] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\End_building.cereal");
-	//skinned_meshes[1] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\End_building2.cereal");
-	//skinned_meshes[2] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\End_building3.cereal");
+	// 名前、タイム、キル数を送信します
+	Leaderboard::SendScore(globalPlayerName, clearTime, defeatedEnemies);
 
-	//sprite_end = std::make_unique<sprite>(fw_->device.Get(), L".\\resources\\owari.png");
-	font_batch = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\fontS.png", 1);
+	skinned_meshes[0] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\End4.cereal");
+	skinned_meshes[1] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\pose3.cereal");
+	sprite_end = std::make_unique<sprite>(fw_->device.Get(), L".\\resources\\score_bord_.png");
+	font_batch = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\fontE.png", 1);
 
 	skybox_ = std::make_unique<sky_map>(fw_->device.Get(), L".\\resources\\skybox1.dds");
 }
@@ -55,15 +61,78 @@ void SceneEnd::Finalize()
 	//sprite_end.reset();
 }
 
+void SceneEnd::ChangePlayerAnimation(int newIndex)
+{
+	if (newIndex == player_anim_index) return;
+
+	player_anim_index = newIndex;
+	player_anim_time = 0.0f; // ★切り替え時は必ずリセット
+}
+
 //更新処理
 void SceneEnd::Update(float elaspedTime)
 {
+	ShowCursor(TRUE);
 	fw_->light_direction = DirectX::XMFLOAT4{ -1.0f, -1.0f, 1.0f, 0.0f };
 
 	fw_->distance = 20.0f;
 
 	fw_->bloomer->bloom_extraction_threshold = 0.0f;
 	fw_->bloomer->bloom_intensity = 0.0f;
+
+
+	if (!skinned_meshes[1]->animation_clips.empty())
+	{
+		animation& anim = skinned_meshes[1]->animation_clips[player_anim_index];
+
+		player_anim_time += elaspedTime;
+
+		int frame =
+			static_cast<int>(player_anim_time * anim.sampling_rate);
+
+		// ループ
+		if (frame >= static_cast<int>(anim.sequence.size()))
+		{
+			frame = 0;
+			player_anim_time = 0.0f;
+		}
+
+		player.keyframe = anim.sequence[frame];
+	}
+
+	// SCORE計算
+	killScore = Clamp01(defeatedEnemies / 50.0f);
+	timeScore = Clamp01(1.0f - clearTime / 300.0f);
+	speedScore = Clamp01(maxSpeed / 200.0f);
+	score01 =
+		killScore * 0.5f   // 戦闘重視
+		+ timeScore * 0.3f   // スピードクリア
+		+ speedScore * 0.2f;  // テクニック
+	finalScore = static_cast<int>(score01 * 100000);
+
+
+
+	if (finalScore >= 70000)
+	{
+		ChangePlayerAnimation(0);
+	}
+	else if (finalScore >= 35000)
+	{
+		ChangePlayerAnimation(1);
+		translation_object4.x = 3.9f;
+		translation_object4.y = -0.65f;
+		translation_object4.z = -20.8f;
+		rotation_object4.y = 8.78f;
+	}
+	else
+	{
+		ChangePlayerAnimation(2);
+		translation_object4.x = 3.9f;
+		translation_object4.y = -1.2f;
+		translation_object4.z = -20.6f;
+		rotation_object4.y = 2.88f;
+	}
+
 	// -------------------------
 	// マウス座標取得
 	// -------------------------
@@ -87,8 +156,8 @@ void SceneEnd::Update(float elaspedTime)
 
 void SceneEnd::DrawNumber(int number, float x, float y, float scale)
 {
-	const float cellW = 256.0f;
-	const float cellH = 303.33f;
+	const float cellW = 507.0f;
+	const float cellH = 476.0f;
 
 	std::string str = std::to_string(number);
 	float posX = x;
@@ -280,44 +349,25 @@ void SceneEnd::Render()
 		skinned_meshes[0]->render(fw_->immediate_context.Get(), world, material_color, nullptr, flat_shading);
 		flat_shading = prev_flat;
 	}
-	//{
-	//	DirectX::XMMATRIX T = DirectX::XMMatrixTranslation(
-	//		translation_object4.x,
-	//		translation_object4.y,
-	//		translation_object4.z
-	//	);
-	//	DirectX::XMMATRIX Scale = DirectX::XMMatrixScaling(1, 1, 1);
-	//	DirectX::XMMATRIX R = DirectX::XMMatrixRotationRollPitchYaw(
-	//		rotation_object4.x,
-	//		rotation_object4.y,
-	//		rotation_object4.z
-	//	);
-	//	DirectX::XMFLOAT4X4 world;
-	//	DirectX::XMStoreFloat4x4(&world, C * Scale * R * T);
-	//	bool prev_flat = flat_shading;
-	//	flat_shading = false; // Object3 はフラット描画
-	//	skinned_meshes[1]->render(fw_->immediate_context.Get(), world, material_color, nullptr, flat_shading);
-	//	flat_shading = prev_flat;
-	//}
-	//{
-	//	DirectX::XMMATRIX T = DirectX::XMMatrixTranslation(
-	//		translation_object5.x,
-	//		translation_object5.y,
-	//		translation_object5.z
-	//	);
-	//	DirectX::XMMATRIX Scale = DirectX::XMMatrixScaling(1, 1, 1);
-	//	DirectX::XMMATRIX R = DirectX::XMMatrixRotationRollPitchYaw(
-	//		rotation_object5.x,
-	//		rotation_object5.y,
-	//		rotation_object5.z
-	//	);
-	//	DirectX::XMFLOAT4X4 world;
-	//	DirectX::XMStoreFloat4x4(&world, C * Scale * R * T);
-	//	bool prev_flat = flat_shading;
-	//	flat_shading = true; // Object3 はフラット描画
-	//	skinned_meshes[2]->render(fw_->immediate_context.Get(), world, material_color, nullptr, flat_shading);
-	//	flat_shading = prev_flat;
-	//}
+	{
+		DirectX::XMMATRIX T = DirectX::XMMatrixTranslation(
+			translation_object4.x,
+			translation_object4.y,
+			translation_object4.z
+		);
+		DirectX::XMMATRIX Scale = DirectX::XMMatrixScaling(scaling4.x, scaling4.y, scaling4.z);
+		DirectX::XMMATRIX R = DirectX::XMMatrixRotationRollPitchYaw(
+			rotation_object4.x,
+			rotation_object4.y,
+			rotation_object4.z
+		);
+		DirectX::XMFLOAT4X4 world;
+		DirectX::XMStoreFloat4x4(&world, C * Scale * R * T);
+		bool prev_flat = flat_shading;
+		flat_shading = false; // Object3 はフラット描画
+		skinned_meshes[1]->render(fw_->immediate_context.Get(), world, material_color, &player.keyframe, flat_shading);
+		flat_shading = prev_flat;
+	}
 	fw_->framebuffers[0]->deactivate(fw_->immediate_context.Get());
 	if (fw_->enable_bloom)
 	{
@@ -357,22 +407,22 @@ void SceneEnd::Render()
 		fw_->bit_block_transfer->blit(fw_->immediate_context.Get(), fw_->framebuffers[1]->shader_resource_views[0].GetAddressOf(), 0, 1, fw_->pixel_shaders[2].Get());
 	}
 
-	//if (sprite_end)
-	//{
-	//	fw_->immediate_context->OMSetDepthStencilState(fw_->depth_stencil_states[static_cast<size_t>(DEPTH_STATE::ZT_OFF_ZW_OFF)].Get(), 0);
-	//	fw_->immediate_context->RSSetState(fw_->rasterizer_states[static_cast<size_t>(RASTER_STATE::CULL_NONE)].Get());
+	if (sprite_end)
+	{
+		fw_->immediate_context->OMSetDepthStencilState(fw_->depth_stencil_states[static_cast<size_t>(DEPTH_STATE::ZT_OFF_ZW_OFF)].Get(), 0);
+		fw_->immediate_context->RSSetState(fw_->rasterizer_states[static_cast<size_t>(RASTER_STATE::CULL_NONE)].Get());
 
-	//	sprite_end->render(fw_->immediate_context.Get(), 0, 0, 1920, 1080);
-	//}
-	DrawNumber(static_cast<int>(clearTime), timePosition.x, timePosition.y, timeScale);
+		sprite_end->render(fw_->immediate_context.Get(), Pos.x, Pos.y, scalePos.x, scalePos.y);
+	}
+	DrawNumber(static_cast<int>(clearTime / 60), timePosition.x, timePosition.y, timeScale);
 
 	//saveSpeed
 
-	int maxSpeed = static_cast<int>(saveSpeed / P_ACCELE);
+	maxSpeed = static_cast<int>(saveSpeed / P_ACCELE);
 
 	int seconds = static_cast<int>(clearTime);
-	int decimals = static_cast<int>((clearTime - seconds) * 100);
-	DrawNumber(decimals, timePosition.x + 150.0f, timePosition.y, timeScale);
+
+	DrawNumber(seconds % 60, timePosition.x + 150.0f, timePosition.y, timeScale);
 
 	DrawNumber(static_cast<int>(maxSpeed), speedPos.x, speedPos.y, speedScale);
 
@@ -383,6 +433,8 @@ void SceneEnd::DrawGUI()
 {
 #ifdef USE_IMGUI
 	ImGui::Begin("RESULT");
+
+	ImGui::Text("FINAL SCORE : %d", finalScore);
 
 	ImGui::SetWindowFontScale(2.0f);
 	ImGui::Text("CLEAR TIME : %.2f sec", clearTime);
@@ -418,6 +470,10 @@ void SceneEnd::DrawGUI()
 	ImGui::Checkbox("Enable RADIAL_BLUR", &fw_->enable_radial_blur);
 	ImGui::Checkbox("Enable Bloom", &fw_->enable_bloom);
 
+	ImGui::Separator();
+	ImGui::DragFloat2("Pos", &Pos.x, 1.0f);
+	ImGui::DragFloat2("scalePos", &scalePos.x, 1.0f);
+
 	ImGui::SliderFloat("light_direction.x", &fw_->light_direction.x, -1.0f, +1.0f);
 	ImGui::SliderFloat("light_direction.y", &fw_->light_direction.y, -1.0f, +1.0f);
 	ImGui::SliderFloat("light_direction.z", &fw_->light_direction.z, -1.0f, +1.0f);
@@ -436,9 +492,19 @@ void SceneEnd::DrawGUI()
 	ImGui::SliderFloat("camera_position.z", &fw_->camera_position.z, -200.0f, +200.0f);
 
 	ImGui::Separator();
-	ImGui::SliderFloat("translation_object3.x", &translation_object4.x, -200.0f, +200.0f);
-	ImGui::SliderFloat("translation_object3.y", &translation_object4.y, -200.0f, +200.0f);
-	ImGui::SliderFloat("translation_object3.z", &translation_object4.z, -200.0f, +200.0f);
+	ImGui::SliderFloat("translation_object3.x", &translation_object3.x, -200.0f, +200.0f);
+	ImGui::SliderFloat("translation_object3.y", &translation_object3.y, -200.0f, +200.0f);
+	ImGui::SliderFloat("translation_object3.z", &translation_object3.z, -200.0f, +200.0f);
+
+	ImGui::Separator();
+	ImGui::SliderFloat("translation_object4.x", &translation_object4.x, -200.0f, +200.0f);
+	ImGui::SliderFloat("translation_object4.y", &translation_object4.y, -200.0f, +200.0f);
+	ImGui::SliderFloat("translation_object4.z", &translation_object4.z, -200.0f, +200.0f);
+
+	ImGui::Separator();
+	ImGui::SliderFloat("scaling4.x", &scaling4.x, -10.0f, +10.0f);
+	ImGui::SliderFloat("scaling4.y", &scaling4.y, -10.0f, +10.0f);
+	ImGui::SliderFloat("scaling4.z", &scaling4.z, -10.0f, +10.0f);
 
 	ImGui::Separator();
 	ImGui::SliderFloat("rotation_object3.y", &rotation_object4.y, -100.0f, +100.0f);

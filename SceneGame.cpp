@@ -17,6 +17,8 @@ float saveSpeed = 0.0f;
 int globalMaxKills = 0;       // 最高キル数
 float globalBestTime = 0.0f;  // 最速タイム
 
+extern int saveNum;
+
 SceneGame::SceneGame(HWND hwnd, framework* fw) : hwnd(hwnd), fw_(fw)
 {
 }
@@ -52,8 +54,10 @@ void SceneGame::Initialize()
 	SE_PANCHI = audio.LoadAudioSource(".\\resources\\panchi.wav");
 	SE_KICK = audio.LoadAudioSource(".\\resources\\kick.wav");
 	SE_MISS = audio.LoadAudioSource(".\\resources\\miss.wav");
-	bgmGame = audio.LoadAudioSource(".\\resources\\スティックマンの冒険.wav");
-	if (bgmGame) bgmGame->Play(true);
+	bgmGame[0] = audio.LoadAudioSource(".\\resources\\スティックマンの冒険.wav");
+	bgmGame[1] = audio.LoadAudioSource(".\\resources\\スティックマンの伝説.wav");
+	bgmGame[2] = audio.LoadAudioSource(".\\resources\\Legends of Stickman.wav");
+	if (bgmGame) bgmGame[saveNum]->Play(true);
 
 
 	// スケール設定
@@ -106,11 +110,13 @@ void SceneGame::Finalize()
 	for (auto& m : skinned_meshes) m.reset();
 	sprite_batches[0].reset();
 
-	if (bgmGame) {
-		bgmGame->Stop();
-		delete bgmGame;
-		bgmGame = nullptr;
-	}
+		if (bgmGame[saveNum])
+		{
+			bgmGame[saveNum]->Stop();
+			delete bgmGame[saveNum];
+			bgmGame[saveNum] = nullptr;
+		}
+	
 
 
 }
@@ -145,12 +151,7 @@ void SceneGame::Update(float elapsedTime)
 
 		if (goalTimer >= 5.0f)
 		{
-			if (!isScoreSent)
-			{
-				Leaderboard::SendScore("Player", gameTime, defeatedCount);
-				isScoreSent = true; // 送信済みにする
-			}
-
+		
 			SceneManager::instance().ChangeScene(new SceneEnd(fw_, gameTime, defeatedCount));
 		}
 		return;
@@ -321,6 +322,16 @@ void SceneGame::UpdatePlayer(float elaspedTime)
 				enemy.animState = EnemyAnimState::Run;
 				enemy.kickAnimTime = 0.0f;
 				enemy.runAnimTime = 0.0f;
+
+				// 【修正】キーフレームを即座に「走りモーション」の初期状態に更新する
+				// これをしないと、Renderで「走りモデル」に対して「キックのキーフレーム」を使ってしまい、
+				// ボーン数が合わずに out_of_range エラーになる
+				int runMeshIndex = (enemy.type == 0 ? 1 : 5);
+				if (skinned_meshes[runMeshIndex] && !skinned_meshes[runMeshIndex]->animation_clips.empty())
+				{
+					enemy.keyframe = skinned_meshes[runMeshIndex]->animation_clips[0].sequence[0];
+				}
+
 				continue;
 			}
 			else
@@ -787,7 +798,14 @@ void SceneGame::CheckCollisions()
 				enemy.animState = EnemyAnimState::Kick;
 				enemy.kickAnimTime = 0.0f;
 			}
-
+			if (skinned_meshes[11] && !skinned_meshes[11]->animation_clips.empty())
+			{
+				const auto& anim = skinned_meshes[11]->animation_clips[0];
+				if (!anim.sequence.empty())
+				{
+					enemy.keyframe = anim.sequence[0];
+				}
+			}
 
 			knockState = KnockState::Knocked;
 			knocked_anim_time = 0.0f;

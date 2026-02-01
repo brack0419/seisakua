@@ -13,18 +13,34 @@
 extern int globalMaxKills;
 extern float globalBestTime;
 
+std::string globalPlayerName = "player"; // 他のシーンでも使う名前
+
+int saveNum;
+
+constexpr int MUSIC_COUNT = 3;
+
+static bool prevL = false;
+static bool prevR = false;
+
+bool nowL = false;
+bool nowR = false;
+
 SceneTitle::SceneTitle(framework* fw) : fw_(fw)
 {
 }
 
 void SceneTitle::Initialize()
 {
+	//music_Num = 0;
 	//MessageBoxA(NULL, "SceneTitle::Initialize Started!", "Debug", MB_OK);
 
 	HRESULT hr{ S_OK };
 
 	// ★追加: フォント画像の読み込み
 	font_batch = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\fontS.png", 1);
+
+	font_alpha_batch = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\fontG.png", 1);
+
 
 	skinned_meshes[0] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\title_text.cereal");
 	skinned_meshes[1] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\base.cereal");
@@ -41,6 +57,12 @@ void SceneTitle::Initialize()
 	Spr_botan[0] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\fontN.png", 1);
 	Spr_botan[1] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\musicL.png", 1);
 	Spr_botan[2] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\musicR.png", 1);
+
+	auto& audio = Audio::Instance();
+	bgmGame[0] = audio.LoadAudioSource(".\\resources\\スティックマンの冒険.wav");
+	bgmGame[1] = audio.LoadAudioSource(".\\resources\\スティックマンの伝説.wav");
+	bgmGame[2] = audio.LoadAudioSource(".\\resources\\Legends of Stickman.wav");
+
 
 	for (int i = 0; i < 20; ++i)
 	{
@@ -118,6 +140,16 @@ void SceneTitle::Finalize()
 	skinned_meshes[6].reset();
 	skinned_meshes[7].reset();
 	skinned_meshes[8].reset();
+
+	for (int i = 0; i < 3; i++)
+	{
+		if (bgmGame[i])
+		{
+			bgmGame[i]->Stop();
+			delete bgmGame[i];
+			bgmGame[i] = nullptr;
+		}
+	}
 }
 
 DirectX::XMFLOAT3 HSVtoRGB(float h, float s, float v)
@@ -145,6 +177,95 @@ DirectX::XMFLOAT3 HSVtoRGB(float h, float s, float v)
 
 void SceneTitle::Update(float elaspedTime)
 {
+	POINT mouse_client_pos{};
+	GetCursorPos(&mouse_client_pos);
+
+	HWND hwnd = FindWindow(APPLICATION_NAME, L"");
+	ScreenToClient(hwnd, &mouse_client_pos);
+
+	// -- - 名前入力処理(A - Z) -- -
+	if (!text_falling && !title_clicked) // ゲーム開始演出中は操作不可
+	{
+		for (int key = 'A'; key <= 'Z'; key++)
+		{
+			if ((GetAsyncKeyState(key) & 0x8000) && !keyState[key])
+			{
+				if (inputName.length() < 8) // 最大8文字まで
+				{
+					inputName += (char)key;
+				}
+			}
+		}
+
+		// BackSpace で削除
+		if ((GetAsyncKeyState(VK_BACK) & 0x8000) && !keyState[VK_BACK])
+		{
+			if (!inputName.empty())
+			{
+				inputName.pop_back();
+			}
+		}
+
+		// キー状態の更新
+		for (int i = 0; i < 256; i++)
+		{
+			keyState[i] = (GetAsyncKeyState(i) & 0x8000) != 0;
+		}
+	}
+
+	static int lastMusic = -1;
+
+	if (music_Num != lastMusic)
+	{
+		if (lastMusic >= 0 && bgmGame[lastMusic])
+		{
+			bgmGame[lastMusic]->Stop();
+		}
+
+		if (bgmGame[music_Num])
+		{
+			bgmGame[music_Num]->Play(true);
+		}
+
+		lastMusic = music_Num;
+	}
+
+
+	bool click = (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0;
+
+	if (fw_->mouse_client_pos.x >= 1612 &&
+		fw_->mouse_client_pos.x <= 1697 &&
+		fw_->mouse_client_pos.y >= 985 &&
+		fw_->mouse_client_pos.y <= 1075)
+	{
+		nowL = click;
+	}
+
+	if (fw_->mouse_client_pos.x >= 1825 &&
+		fw_->mouse_client_pos.x <= 1912 &&
+		fw_->mouse_client_pos.y >= 985 &&
+		fw_->mouse_client_pos.y <= 1075)
+	{
+		nowR = click;
+	}
+
+	if (nowL && !prevL)
+	{
+		// ← 前の曲
+		music_Num = (music_Num + MUSIC_COUNT - 1) % MUSIC_COUNT;
+	}
+
+	if (nowR && !prevR)
+	{
+		// → 次の曲
+		music_Num = (music_Num + 1) % MUSIC_COUNT;
+	}
+
+	prevL = nowL;
+	prevR = nowR;
+
+
+
 	// 左クリックで Direction 再生開始
 	if ((GetAsyncKeyState(VK_RBUTTON) & 0x8000) && !play_direction)
 	{
@@ -169,11 +290,7 @@ void SceneTitle::Update(float elaspedTime)
 		}
 	}
 
-	POINT mouse_client_pos{};
-	GetCursorPos(&mouse_client_pos);
-
-	HWND hwnd = FindWindow(APPLICATION_NAME, L"");
-	ScreenToClient(hwnd, &mouse_client_pos);
+	
 
 	// --- Click Area : 演出トリガーのみ ---
 	if (!text_falling)   // 落下中は無視
@@ -207,6 +324,11 @@ void SceneTitle::Update(float elaspedTime)
 
 	if (GetAsyncKeyState(VK_SPACE) & 0x8000)
 	{
+		saveNum = music_Num;
+		// ★追加: 名前を確定して保存
+		if (inputName.empty()) inputName = "noname";
+		globalPlayerName = inputName;
+
 		SceneManager::instance().ChangeScene(new SceneLoading(new SceneGame(hwnd, fw_), fw_));
 
 		//SceneManager::instance().ChangeScene(new SceneEnd(fw_, gameTime, defeatedCount));
@@ -215,6 +337,13 @@ void SceneTitle::Update(float elaspedTime)
 	if (GetAsyncKeyState('E') & 0x8000)
 	{
 		SceneManager::instance().ChangeScene(new SceneEnd(fw_, 1, 1));
+
+		//SceneManager::instance().ChangeScene(new SceneEnd(fw_, gameTime, defeatedCount));
+		return;
+	}
+	if (GetAsyncKeyState('T') & 0x8000)
+	{
+		SceneManager::instance().ChangeScene(new SceneLoading(new SceneTutorial(hwnd, fw_), fw_));
 
 		//SceneManager::instance().ChangeScene(new SceneEnd(fw_, gameTime, defeatedCount));
 		return;
@@ -717,28 +846,35 @@ void SceneTitle::Render()
 
 	// ★ ランキング描画
 	// スレッドセーフにデータにアクセス
+		// ★ ランキング描画
 	std::lock_guard<std::mutex> lock(rankingMutex);
 
-	float startY = 200.0f; // 表示開始Y座標
+	float currentY = rankingStartY;
 	int rank = 1;
 
 	for (const auto& data : rankingData)
 	{
-		// 順位
-		DrawNumber(rank, 100, startY, 0.4f, fw_->immediate_context.Get());
+		// ★追加: 3位より下になったらループを終了
+		if (rank > 3) break;
 
-		// タイム (秒)
-		DrawNumber((int)data.time, 300, startY, 0.4f, fw_->immediate_context.Get());
+		// 順位
+		DrawNumber(rank, rankPosX, currentY, rankingScale, fw_->immediate_context.Get());
+
+		// 名前
+		DrawString(data.name, rankingNamePosX, currentY, rankingScale);
+
+		// タイム
+		DrawNumber((int)data.time, rankingTimePosX, currentY, rankingScale, fw_->immediate_context.Get());
 
 		// キル数
-		DrawNumber(data.kills, 600, startY, 0.4f, fw_->immediate_context.Get());
+		DrawNumber(data.kills, rankingKillsPosX, currentY, rankingScale, fw_->immediate_context.Get());
 
-		startY += 50.0f; // 行間
+		currentY += rankingLineSpacing;
 		rank++;
 	}
 
-	//DrawNumber(music_Num, 1708.0f, 981.0f, 0.2f, 8, fw_->immediate_context.Get());
-
+	// 入力中の名前を描画 (座標は適宜調整してください)
+	DrawString("name " + inputName, namePos.x, namePos.y, nameScale);
 	Spr_botan[1]->begin(fw_->immediate_context.Get());
 	Spr_botan[1]->render(
 		fw_->immediate_context.Get(),
@@ -759,8 +895,6 @@ void SceneTitle::Render()
 	);
 	Spr_botan[2]->end(fw_->immediate_context.Get());
 }
-
-
 
 void SceneTitle::DrawNumber(int number, float x, float y, float scale, ID3D11DeviceContext* ctx)
 {
@@ -793,6 +927,66 @@ void SceneTitle::DrawNumber(int number, float x, float y, float scale, ID3D11Dev
 			cellW, cellH
 		);
 		Spr_botan[0]->end(fw_->immediate_context.Get());
+
+		posX += (cellW * scale);
+	}
+}
+
+void SceneTitle::DrawString(std::string str, float x, float y, float scale)
+{
+	if (!font_alpha_batch) return;
+
+	// ★重要: 画像のサイズに合わせて数値を変更してください
+	float textureW = 3616.0f; // 画像全体の横幅 (例: 512px)
+	float textureH = 1184.0f; // 画像全体の縦幅 (例: 256px)
+
+	// 横9文字、縦3行 で分割計算
+	float cellW = textureW / 9.0f;
+	float cellH = textureH / 3.0f;
+
+	float posX = x;
+
+	for (char c : str)
+	{
+		// スペースなら空白を空ける
+		if (c == ' ') {
+			posX += (cellW * scale) * 0.5f;
+			continue;
+		}
+
+		int index = -1;
+
+		// 小文字 'a'～'z' の場合
+		if (c >= 'a' && c <= 'z') {
+			index = c - 'a';
+		}
+		// 大文字 'A'～'Z' が来ても対応する場合
+		else if (c >= 'A' && c <= 'Z') {
+			index = c - 'A';
+		}
+
+		// 描画対象の文字なら
+		if (index >= 0 && index <= 25)
+		{
+			// 横9個で折り返し
+			int col = index % 9;
+			int row = index / 9;
+
+			float sx = col * cellW;
+			float sy = row * cellH;
+
+			font_alpha_batch->begin(fw_->immediate_context.Get());
+			font_alpha_batch->render(
+				fw_->immediate_context.Get(),
+				posX, y,
+				cellW * scale, cellH * scale,
+				1, 1, 1, 1,
+				0.0f,
+				sx, sy,
+				cellW, cellH
+			);
+			font_alpha_batch->end(fw_->immediate_context.Get());
+		}
 
 		posX += (cellW * scale);
 	}
@@ -997,6 +1191,27 @@ void SceneTitle::DrawGUI()
 		ImGui::SliderFloat("Max Kills Scale", &bestScoreScale, 0.1f, 1.0f);
 		ImGui::DragFloat2("Best Time Pos", &bestTimePos.x);
 		ImGui::SliderFloat("Best Time Scale", &bestTimeScale, 0.1f, 1.0f);
+	}
+
+	ImGui::Separator(); // 区切り線
+	ImGui::Text("--- Name Input UI ---");
+	ImGui::DragFloat2("Name Position", &namePos.x, 1.0f);      // 位置調整
+	ImGui::SliderFloat("Name Scale", &nameScale, 0.01f, 1.0f); // サイズ調整
+
+
+	if (ImGui::CollapsingHeader("Ranking UI Layout"))
+	{
+		ImGui::Text("--- General ---");
+		ImGui::DragFloat("Start Y", &rankingStartY, 1.0f);
+		ImGui::DragFloat("Line Spacing", &rankingLineSpacing, 0.5f);
+		ImGui::SliderFloat("Scale", &rankingScale, 0.1f, 1.0f);
+
+		ImGui::Separator();
+		ImGui::Text("--- Columns X Position ---");
+		ImGui::DragFloat("Rank X", &rankPosX, 1.0f);
+		ImGui::DragFloat("Name X", &rankingNamePosX, 1.0f);
+		ImGui::DragFloat("Time X", &rankingTimePosX, 1.0f);
+		ImGui::DragFloat("Kills X", &rankingKillsPosX, 1.0f);
 	}
 
 	ImGui::End();

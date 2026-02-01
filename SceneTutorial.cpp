@@ -1,14 +1,17 @@
 #include "SceneTutorial.h"
-#include "SceneTitle.h" // タイトルに戻るため
+#include "SceneTitle.h"
 #include "SceneManager.h"
 #include "shader.h"
 #include "texture.h"
-#include <cstdlib> // rand用
+#include <cstdlib>  
+#include <cmath>
+#include <algorithm>
 
-// ステージの間隔
+#undef min
+#undef max
+
 static const float TUTORIAL_STAGE_LENGTH = 380.0f;
 
-// 撃破カウンター
 static int tutorialDefeatedRed = 0;
 static int tutorialDefeatedBlue = 0;
 
@@ -18,24 +21,46 @@ SceneTutorial::SceneTutorial(HWND hwnd, framework* fw) : hwnd(hwnd), fw_(fw)
 
 void SceneTutorial::Initialize()
 {
-	// リソース読み込み
-	skinned_meshes[0] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\Run_main.cereal");
-	skinned_meshes[1] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\enemy.cereal");
+	HRESULT hr{ S_OK };
+
+
+	skinned_meshes[0] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\player_run.cereal");
+	skinned_meshes[1] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\enemy_red_run.cereal");
 	skinned_meshes[2] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\main_stage.cereal");
-	skinned_meshes[3] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\cube.000.fbx");
-	skinned_meshes[4] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\Vegetable.fbx");
+	skinned_meshes[3] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\cube.000.cereal");
+	skinned_meshes[4] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\Obstacles4.cereal");
+	skinned_meshes[5] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\enemy_blue_run.cereal");
+	skinned_meshes[6] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\player_slide.cereal");
+	skinned_meshes[7] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\player_attack3.cereal");
+	skinned_meshes[8] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\player_knocked1.cereal");
+	skinned_meshes[9] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\player_up3.cereal");
+	skinned_meshes[10] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\player_jump2.cereal");
+	skinned_meshes[11] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\enemy_red_kicking1.cereal");
+
 	sprite_batches[0] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\fontS.png", 1);
+	sprite_batches[1] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\text.png", 1);
+	sprite_batches[2] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\text1.png", 1);
+	sprite_batches[3] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\text2.png", 1);
+	sprite_batches[4] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\text3.png", 1);
+	sprite_batches[5] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\text5.png", 1);
+
 
 	SE_PANCHI = Audio::Instance().LoadAudioSource(".\\resources\\panchi.wav");
 	SE_KICK = Audio::Instance().LoadAudioSource(".\\resources\\kick.wav");
 	SE_MISS = Audio::Instance().LoadAudioSource(".\\resources\\miss.wav");
 
-	// プレイヤー初期化
+	playerScale = { 0.02f, 0.02f, 0.02f };
+	rockScale = { 0.12f, 0.12f, 0.12f };
+
 	player.position = { 0, 0, 0 };
 	player.currentLane = 1;
 	player.moveSpeed = 10.0f;
+	player.isGround = true;
+	player.knockbackTimer = 0.0f;
 
-	// ステージ初期配置
+	fw_->bloomer->bloom_extraction_threshold = 0.2f;
+	fw_->bloomer->bloom_intensity = 0.25f;
+
 	stages.clear();
 	for (int i = 0; i < MAX_STAGE_TILES; ++i)
 	{
@@ -49,17 +74,35 @@ void SceneTutorial::Initialize()
 	currentStep = TutorialStep::Welcome;
 	stepTimer = 0.0f;
 	actionDone = false;
+	isSlide = false;
+	isAttackAnim = false;
+	isJumpAnim = false;
+	knockState = KnockState::None;
 
-	// カウンターリセット
+	knockBlurTimer = 0.0f;
+	shakeTimer = 0.0f;
+	shakePower = 0.0f;
+	cameraKickBack = 0.0f;
+
 	tutorialDefeatedRed = 0;
 	tutorialDefeatedBlue = 0;
 
-	// カメラの初期位置を確定させる
-	UpdateCamera();
+	fw_->radial_blur_data.blur_strength = 0.0f;
+	fw_->radial_blur_data.blur_radius = 0.0f;
+	fw_->radial_blur_data.blur_decay = 0.0f;
+	UpdateCamera(0.0f);
 }
 
 void SceneTutorial::Finalize()
 {
+	for (auto& m : skinned_meshes) m.reset();
+	sprite_batches[0].reset();
+	sprite_batches[1].reset();
+	sprite_batches[2].reset();
+	sprite_batches[3].reset();
+	sprite_batches[4].reset();
+	sprite_batches[5].reset();
+
 	if (SE_PANCHI) { delete SE_PANCHI; SE_PANCHI = nullptr; }
 	if (SE_KICK) { delete SE_KICK; SE_KICK = nullptr; }
 	if (SE_MISS) { delete SE_MISS; SE_MISS = nullptr; }
@@ -67,7 +110,6 @@ void SceneTutorial::Finalize()
 
 void SceneTutorial::Update(float elapsedTime)
 {
-	// ステージ無限ループ処理
 	float playerZ = player.position.z;
 	if (!stages.empty())
 	{
@@ -86,24 +128,19 @@ void SceneTutorial::Update(float elapsedTime)
 	UpdatePlayer(elapsedTime);
 	InputAttack();
 
-	//  吹き飛んでいる敵の更新処理
 	for (auto& enemy : enemies)
 	{
 		if (enemy.isBlownAway)
 		{
-			// 重力で落下させる
 			enemy.blowVelocity.y -= 40.0f * elapsedTime;
 
-			// 速度分移動させる
 			enemy.position.x += enemy.blowVelocity.x * elapsedTime;
 			enemy.position.y += enemy.blowVelocity.y * elapsedTime;
 			enemy.position.z += enemy.blowVelocity.z * elapsedTime;
 
-			// クルクル回転させる
 			enemy.blowAngleX += 720.0f * elapsedTime;
 			enemy.blowAngleY += 360.0f * elapsedTime;
 
-			// 地面よりだいぶ下（-20）まで落ちたら完全に消滅させる
 			if (enemy.position.y < -20.0f)
 			{
 				enemy.isAlive = false;
@@ -112,28 +149,37 @@ void SceneTutorial::Update(float elapsedTime)
 	}
 
 	UpdateTutorialFlow(elapsedTime);
-	UpdateCamera();
+	UpdateCamera(elapsedTime);
 
-	// 衝突判定
-	if (player.knockbackTimer <= 0.0f)
+	if (player.knockbackTimer <= 0.0f && knockState == KnockState::None)
 	{
 		for (auto& enemy : enemies)
 		{
-			//  吹き飛び中(isBlownAway)は当たり判定を無視する
 			if (!enemy.isAlive || enemy.isBlownAway) continue;
 
 			float dx = enemy.position.x - player.position.x;
 			float dz = enemy.position.z - player.position.z;
-			if (sqrtf(dx * dx + dz * dz) < 1.5f && fabsf(player.position.y - enemy.position.y) < 2.0f)
+			float distXZ = sqrtf(dx * dx + dz * dz);
+			float dy = fabsf(player.position.y - enemy.position.y);
+
+			if (distXZ < 1.0f && dy < 2.0f)
 			{
-				player.knockbackVelocityZ = -20.0f;
-				player.knockbackTimer = 1.0f;
+				player.knockbackVelocityZ = -30.0f;
+				player.knockbackTimer = 2.5f;
+
+				knockState = KnockState::Knocked;
+				knocked_anim_time = 0.0f;
+
+				if (enemy.type == 0)
+				{
+					enemy.animState = EnemyAnimState::Kick;
+					enemy.animationTime = 0.0f;
+				}
 			}
 		}
 	}
 }
 
-// チュートリアルのメインロジック
 void SceneTutorial::UpdateTutorialFlow(float elapsedTime)
 {
 	stepTimer += elapsedTime;
@@ -141,7 +187,6 @@ void SceneTutorial::UpdateTutorialFlow(float elapsedTime)
 	switch (currentStep)
 	{
 	case TutorialStep::Welcome:
-
 		if (stepTimer > 0.5f)
 		{
 			if (GetAsyncKeyState(VK_RETURN) & 0x8000)
@@ -154,15 +199,12 @@ void SceneTutorial::UpdateTutorialFlow(float elapsedTime)
 		break;
 
 	case TutorialStep::Move:
-		// 移動（レーン変更）を検知した瞬間にタイマーをリセット
 		if (!actionDone && player.currentLane != 1)
 		{
 			actionDone = true;
 			stepTimer = 0.0f;
 		}
-
-		// 移動してから3秒経過したら次へ
-		if (actionDone && stepTimer > 3.0f)
+		if (actionDone && stepTimer > 2.0f)
 		{
 			currentStep = TutorialStep::Jump;
 			stepTimer = 0.0f;
@@ -173,15 +215,14 @@ void SceneTutorial::UpdateTutorialFlow(float elapsedTime)
 
 	case TutorialStep::Jump:
 		if (player.position.y > 1.0f) actionDone = true;
-
-		// 障害物がプレイヤーの後ろに行ったら再生成
-		// 岩は吹き飛ばないので enemies[0] のチェックで問題ありません
 		if (enemies.empty() || enemies[0].position.z < player.position.z - 5.0f)
 		{
-			if (!enemies.empty()) enemies.clear();
 
+			if (!enemies.empty()) enemies.clear();
 			if (!actionDone) SpawnObstacle();
+
 			else
+
 			{
 				currentStep = TutorialStep::Attack;
 				stepTimer = 0.0f;
@@ -192,22 +233,18 @@ void SceneTutorial::UpdateTutorialFlow(float elapsedTime)
 		break;
 
 	case TutorialStep::Attack:
-		// 赤と青をそれぞれ3体以上倒したらOK
 		if (tutorialDefeatedRed >= 3 && tutorialDefeatedBlue >= 3)
 		{
 			actionDone = true;
 		}
 
-		// まだ条件未達成で、敵が通り過ぎてしまったら（またはいなくなったら）再生成
 		if (!actionDone)
 		{
-			//  「生きている」かつ「吹き飛んでいない」敵がまだ手前にいるかチェック
 			bool existsActiveEnemy = false;
 			for (const auto& e : enemies)
 			{
 				if (e.isAlive && !e.isBlownAway)
 				{
-					// プレイヤーより手前（あるいは少し後ろまで）にいるなら「まだウェーブ中」とみなす
 					if (e.position.z > player.position.z - 5.0f)
 					{
 						existsActiveEnemy = true;
@@ -216,7 +253,6 @@ void SceneTutorial::UpdateTutorialFlow(float elapsedTime)
 				}
 			}
 
-			// 有効な敵がいない（全滅させた or 全員通り過ぎた）場合は再生成
 			if (!existsActiveEnemy)
 			{
 				enemies.clear();
@@ -238,85 +274,108 @@ void SceneTutorial::UpdateTutorialFlow(float elapsedTime)
 		}
 		break;
 	}
+	if (currentStep != prevStep)
+	{
+		tutorialTextTimer = 0.0f;
+		tutorialTextScale = 0.8f;
+		prevStep = currentStep;
+	}
+
+	tutorialTextTimer += elapsedTime;
+
+	// スケールイン（イージング）
+	float t = std::min(tutorialTextTimer / 0.4f, 1.0f);
+	tutorialTextScale = 0.8f + (1.0f - 0.8f) * (1.0f - powf(1.0f - t, 3));
+
 }
 
 void SceneTutorial::SpawnObstacle()
 {
-	// 3つのレーンすべてに岩を配置
 	for (int i = -1; i <= 1; ++i)
 	{
 		Enemy e;
 		e.position = { i * player.laneWidth, 0, player.position.z + 40.0f };
-		e.type = 2; // 岩
+		e.type = 2;
 		e.isAlive = true;
+		e.animState = EnemyAnimState::Run;
 		enemies.push_back(e);
 	}
 }
 
 void SceneTutorial::SpawnDummyEnemy()
 {
-	// 3つのレーンすべてに敵を配置（ランダムタイプ）
 	for (int i = -1; i <= 1; ++i)
 	{
 		Enemy e;
 		e.position = { i * player.laneWidth, 0, player.position.z + 40.0f };
-
-		// 0(赤) か 1(青) をランダム設定
 		e.type = rand() % 2;
-
 		e.isAlive = true;
-		if (skinned_meshes[1] && !skinned_meshes[1]->animation_clips.empty()) {
-			e.keyframe = skinned_meshes[1]->animation_clips[0].sequence[0];
-		}
+		e.animState = EnemyAnimState::Run;
+
+		if (e.type == 0 && skinned_meshes[1]) e.keyframe = skinned_meshes[1]->animation_clips[0].sequence[0];
+		if (e.type == 1 && skinned_meshes[5]) e.keyframe = skinned_meshes[5]->animation_clips[0].sequence[0];
+
 		enemies.push_back(e);
 	}
 }
 
-void SceneTutorial::UpdatePlayer(float elapsedTime)
+void SceneTutorial::UpdatePlayer(float elaspedTime)
 {
 	if (player.knockbackTimer > 0.0f)
 	{
-		player.knockbackTimer -= elapsedTime;
-		player.position.z += player.knockbackVelocityZ * elapsedTime;
-		player.knockbackVelocityZ += 20.0f * elapsedTime;
+		player.knockbackTimer -= elaspedTime;
+		player.position.z += player.knockbackVelocityZ * elaspedTime;
+		player.knockbackVelocityZ += 20.0f * elaspedTime;
 		if (player.knockbackVelocityZ > 0.0f) player.knockbackVelocityZ = 0.0f;
 	}
 
 	if (player.knockbackTimer <= 0.0f)
 	{
-		// レーン移動処理
 		bool isLeftDown = (GetAsyncKeyState('A') & 0x8000) || (GetAsyncKeyState(VK_LEFT) & 0x8000);
 		bool isRightDown = (GetAsyncKeyState('D') & 0x8000) || (GetAsyncKeyState(VK_RIGHT) & 0x8000);
+
 		bool onLeftTrigger = isLeftDown && !player.wasLeftPressed;
 		bool onRightTrigger = isRightDown && !player.wasRightPressed;
+
 		player.wasLeftPressed = isLeftDown;
 		player.wasRightPressed = isRightDown;
 
 		if (onLeftTrigger && player.currentLane > 0) player.currentLane--;
 		if (onRightTrigger && player.currentLane < 2) player.currentLane++;
 
-		// 座標計算
 		float targetX = (player.currentLane - 1) * player.laneWidth;
 		float diff = targetX - player.position.x;
 		if (fabsf(diff) > 0.01f)
 		{
-			float moveStep = (diff > 0 ? 1.0f : -1.0f) * player.laneChangeSpeed * elapsedTime;
+			float moveStep = (diff > 0 ? 1.0f : -1.0f) * player.laneChangeSpeed * elaspedTime;
 			if (fabsf(moveStep) > fabsf(diff)) player.position.x = targetX;
 			else player.position.x += moveStep;
 		}
-		else player.position.x = targetX;
+		else
+		{
+			player.position.x = targetX;
+		}
 
-		player.position.z += player.moveSpeed * elapsedTime;
+		player.position.z += player.moveSpeed * elaspedTime;
 
 		if ((GetAsyncKeyState(VK_SPACE) & 0x8000) && player.isGround && !attack_state)
 		{
 			player.velocity.y = player.jumpPower;
 			player.isGround = false;
+
+			isJumpAnim = true;
+			jump_anim_time = 0.0f;
 		}
 	}
+	else
+	{
+		player.wasLeftPressed = false;
+		player.wasRightPressed = false;
+	}
 
-	player.velocity.y += player.gravity * elapsedTime;
-	player.position.y += player.velocity.y * elapsedTime;
+	player.velocity.y += player.gravity * elaspedTime;
+	player.position.y += player.velocity.y * elaspedTime;
+
 	if (player.position.y <= 0.0f)
 	{
 		player.position.y = 0.0f;
@@ -324,14 +383,227 @@ void SceneTutorial::UpdatePlayer(float elapsedTime)
 		player.isGround = true;
 	}
 
-	// アニメーション更新
 	if (!skinned_meshes[0]->animation_clips.empty())
 	{
-		animation& anim = skinned_meshes[0]->animation_clips[0];
-		player_anim_time += elapsedTime;
-		int frame = static_cast<int>(player_anim_time * anim.sampling_rate);
-		if (frame >= static_cast<int>(anim.sequence.size())) { frame = 0; player_anim_time = 0.0f; }
+		animation& anim = skinned_meshes[0]->animation_clips[player_anim_index];
+
+		player_anim_time += elaspedTime;
+
+		int frame =
+			static_cast<int>(player_anim_time * anim.sampling_rate);
+
+		if (frame >= static_cast<int>(anim.sequence.size()))
+		{
+			frame = 0;
+			player_anim_time = 0.0f;
+		}
+
 		player.keyframe = anim.sequence[frame];
+	}
+	if (skinned_meshes[1]->animation_clips.empty()) return;
+
+	animation& anim = skinned_meshes[1]->animation_clips[0];
+
+	for (auto& enemy : enemies)
+	{
+		if (!enemy.isAlive || enemy.type == 2) continue;
+
+		skinned_mesh* mesh = nullptr;
+		float* time = nullptr;
+
+		if (enemy.animState == EnemyAnimState::Kick)
+		{
+			mesh = skinned_meshes[11].get();
+			time = &enemy.kickAnimTime;
+		}
+		else
+		{
+			mesh = skinned_meshes[enemy.type == 0 ? 1 : 5].get();
+			time = &enemy.runAnimTime;
+		}
+
+		if (!mesh || mesh->animation_clips.empty()) continue;
+
+		animation& anim = mesh->animation_clips[0];
+
+		*time += elaspedTime;
+		int frame = static_cast<int>(*time * anim.sampling_rate);
+
+		if (frame >= (int)anim.sequence.size())
+		{
+			if (enemy.animState == EnemyAnimState::Kick)
+			{
+				enemy.animState = EnemyAnimState::Run;
+				enemy.kickAnimTime = 0.0f;
+				enemy.runAnimTime = 0.0f;
+				continue;
+			}
+			else
+			{
+				*time = 0.0f;
+				frame = 0;
+			}
+		}
+
+		enemy.keyframe = anim.sequence[frame];
+	}
+
+
+
+
+
+	if (isSlide && skinned_meshes[6] && !skinned_meshes[6]->animation_clips.empty())
+	{
+		blurFade = 1.0f;
+
+		fw_->radial_blur_data.blur_strength = 0.1f * blurFade;
+		fw_->radial_blur_data.blur_radius = 1.0f * blurFade;
+		fw_->radial_blur_data.blur_decay = 0.0f;
+
+		slideTimer += elaspedTime;
+
+		animation& anim = skinned_meshes[6]->animation_clips[0];
+		slide_anim_time += elaspedTime;
+
+		int frame = static_cast<int>(slide_anim_time * anim.sampling_rate);
+		if (frame >= static_cast<int>(anim.sequence.size()))
+		{
+			frame = static_cast<int>(anim.sequence.size()) - 1;
+		}
+
+		player.keyframe = anim.sequence[frame];
+
+		const float SLIDE_DURATION = 1.5f;
+
+		if (slideTimer >= SLIDE_DURATION)
+		{
+			isSlide = false;
+			slideTimer = 0.0f;
+			slide_anim_time = 0.0f;
+		}
+
+		return;
+	}
+
+	blurFade -= elaspedTime * BLUR_FADE_SPEED;
+	blurFade = std::clamp(blurFade, 0.0f, 1.0f);
+
+	float eased = 1.0f - powf(1.0f - blurFade, 2.0f);
+
+	fw_->radial_blur_data.blur_strength = 0.2f * eased;
+	fw_->radial_blur_data.blur_radius = 2.0f * eased;
+	fw_->radial_blur_data.blur_decay = 0.0f;
+
+	if (isAttackAnim && skinned_meshes[7] && !skinned_meshes[7]->animation_clips.empty())
+	{
+		attackAnimTimer += elaspedTime;
+
+		animation& anim = skinned_meshes[7]->animation_clips[0];
+
+		const float ATTACK_ANIM_SPEED = 1.5f;
+		attack_anim_time += elaspedTime * ATTACK_ANIM_SPEED;
+
+		int frame = static_cast<int>(attack_anim_time * anim.sampling_rate);
+		if (frame >= static_cast<int>(anim.sequence.size()))
+		{
+			frame = static_cast<int>(anim.sequence.size()) - 1;
+		}
+
+		player.keyframe = anim.sequence[frame];
+
+		const float ATTACK_DURATION = 0.7f;
+
+		if (attackAnimTimer >= ATTACK_DURATION)
+		{
+			isAttackAnim = false;
+			attackAnimTimer = 0.0f;
+			attack_anim_time = 0.0f;
+		}
+
+		return;
+	}
+	if (knockState != KnockState::None)
+	{
+		if (knockState == KnockState::Knocked &&
+			skinned_meshes[8] &&
+			!skinned_meshes[8]->animation_clips.empty())
+		{
+			animation& anim = skinned_meshes[8]->animation_clips[0];
+
+			knocked_anim_time += elaspedTime * KNOCKED_ANIM_SPEED;
+			int frame = static_cast<int>(knocked_anim_time * anim.sampling_rate);
+
+			if (frame >= static_cast<int>(anim.sequence.size()) - 1)
+			{
+				knockState = KnockState::Recover;
+				knocked_anim_time =
+					(knocked_anim_time * anim.sampling_rate -
+						(anim.sequence.size() - 1)) / anim.sampling_rate;
+			}
+			else
+			{
+				player.keyframe = anim.sequence[frame];
+				return;
+			}
+		}
+
+		if (knockState == KnockState::Recover &&
+			skinned_meshes[9] &&
+			!skinned_meshes[9]->animation_clips.empty())
+		{
+			animation& anim = skinned_meshes[9]->animation_clips[0];
+
+			knocked_anim_time += elaspedTime * RECOVER_ANIM_SPEED;
+			int frame = static_cast<int>(knocked_anim_time * anim.sampling_rate);
+
+			if (frame >= static_cast<int>(anim.sequence.size()))
+			{
+				knockState = KnockState::None;
+				knocked_anim_time =
+					(knocked_anim_time * anim.sampling_rate -
+						(anim.sequence.size() - 1)) / anim.sampling_rate;
+				return;
+			}
+
+			player.keyframe = anim.sequence[frame];
+			return;
+		}
+	}
+	if (knockBlurTimer > 0.0f)
+	{
+		knockBlurTimer -= elaspedTime;
+
+		float k = knockBlurTimer / 0.3f;
+		fw_->radial_blur_data.blur_strength = 0.35f * k;
+		fw_->radial_blur_data.blur_radius = 1.5f * k;
+		fw_->radial_blur_data.blur_decay = 0.0f;
+	}
+	if (isJumpAnim && skinned_meshes[10] && !skinned_meshes[10]->animation_clips.empty())
+	{
+		animation& anim = skinned_meshes[10]->animation_clips[0];
+
+		const float JUMP_ANIM_DURATION = 1.0f;
+
+		jump_anim_time += elaspedTime;
+
+		float t = jump_anim_time / JUMP_ANIM_DURATION;
+		t = std::clamp(t, 0.0f, 1.0f);
+
+		int frame = static_cast<int>(t * anim.sequence.size());
+		if (frame >= static_cast<int>(anim.sequence.size()))
+		{
+			frame = static_cast<int>(anim.sequence.size()) - 1;
+		}
+
+		player.keyframe = anim.sequence[frame];
+
+		if (player.isGround || t >= 1.0f)
+		{
+			isJumpAnim = false;
+			jump_anim_time = 0.0f;
+		}
+
+		return;
 	}
 }
 
@@ -340,10 +612,32 @@ void SceneTutorial::InputAttack()
 	bool nowLButton = (GetKeyState(VK_LBUTTON) & 0x8000) != 0;
 	bool nowRButton = (GetKeyState(VK_RBUTTON) & 0x8000) != 0;
 
-	if (!attack_state && player.isGround)
+	if (!attack_state && player.isGround && knockState == KnockState::None)
 	{
-		if (nowLButton && !prevLButton) { attack_state = true; attack_hit_enable = true; attack_timer = 0; attack_type = 1; attack_c = { 1,0,0,1 }; }
-		else if (nowRButton && !prevRButton) { attack_state = true; attack_hit_enable = true; attack_timer = 0; attack_type = 2; attack_c = { 0,0,1,1 }; }
+		if (nowLButton && !prevLButton)
+		{
+			attack_state = true;
+			attack_hit_enable = true;
+			attack_timer = 0;
+			attack_type = 1;
+			attack_c = { 1,0,0,1 };
+
+			isAttackAnim = true;
+			attackAnimTimer = 0.0f;
+			attack_anim_time = 0.0f;
+		}
+		else if (nowRButton && !prevRButton)
+		{
+			attack_state = true;
+			attack_hit_enable = true;
+			attack_timer = 0;
+			attack_type = 2;
+			attack_c = { 0,0,1,1 };
+
+			isSlide = true;
+			slideTimer = 0.0f;
+			slide_anim_time = 0.0f;
+		}
 	}
 
 	if (attack_hit_enable)
@@ -351,30 +645,24 @@ void SceneTutorial::InputAttack()
 		Boxes.length = 20.0f;
 		for (auto& enemy : enemies)
 		{
-			//  吹き飛び中も除外
-			if (!enemy.isAlive || enemy.isBlownAway || enemy.type == 2) continue; // 岩は壊せない
+			if (!enemy.isAlive || enemy.isBlownAway || enemy.type == 2) continue;
 
 			float distZ = enemy.position.z - player.position.z;
 			if (distZ > 0.0f && distZ < 20.0f && fabsf(enemy.position.x - player.position.x) < 2.5f)
 			{
 				if ((attack_type == 1 && enemy.type == 0) || (attack_type == 2 && enemy.type == 1))
 				{
-					// ここで吹き飛び処理を開始
 					enemy.isBlownAway = true;
 
-					// 上方向と奥方向へ飛ばす
 					float blowUp = 15.0f;
 					float blowForward = 25.0f;
-					// 殴った方向（左右）へも少し飛ばす (attack_type 2=Right(Blue Kick))
 					float blowSide = (attack_type == 2) ? 5.0f : -5.0f;
 
 					enemy.blowVelocity = { blowSide, blowUp, blowForward };
 
-					// 倒した敵の種類をカウント
 					if (enemy.type == 0) tutorialDefeatedRed++;
 					if (enemy.type == 1) tutorialDefeatedBlue++;
 
-					// 敵を倒すたびに速度アップ
 					player.moveSpeed += 5.0f;
 
 					if (attack_type == 1 && SE_PANCHI) SE_PANCHI->Play(false);
@@ -387,14 +675,14 @@ void SceneTutorial::InputAttack()
 	if (attack_state)
 	{
 		attack_timer++;
-		if (attack_timer == 30) attack_hit_enable = false;
-		if (attack_timer >= 60) { attack_state = false; attack_timer = 0; }
+		if (attack_timer == 20) attack_hit_enable = false;
+		if (attack_timer >= 25) { attack_state = false; attack_timer = 0; }
 	}
 	prevLButton = nowLButton;
 	prevRButton = nowRButton;
 }
 
-void SceneTutorial::UpdateCamera()
+void SceneTutorial::UpdateCamera(float elapsedTime)
 {
 	camera_focus = player.position;
 	camera_focus.y += 2.0f;
@@ -402,6 +690,28 @@ void SceneTutorial::UpdateCamera()
 	float sx = sinf(rotateX), cx = cosf(rotateX);
 	float sy = sinf(rotateY), cy = cosf(rotateY);
 	DirectX::XMVECTOR Offset = DirectX::XMVectorScale(DirectX::XMVectorSet(cx * sy, -sx, cx * cy, 0.0f), distance);
+
+	DirectX::XMStoreFloat3(&camera_position, DirectX::XMVectorSubtract(Focus, Offset));
+
+
+	if (shakeTimer > 0.0f)
+	{
+		shakeTimer -= elapsedTime;
+
+		float t = shakeTimer * 20.0f;
+		float shakeX = (sinf(t * 12.3f)) * shakePower;
+		float shakeY = (cosf(t * 9.7f)) * shakePower;
+
+		camera_position.x += shakeX;
+		camera_position.y += shakeY;
+	}
+	if (cameraKickBack > 0.0f)
+	{
+		cameraKickBack -= elapsedTime * 8.0f;
+	}
+	cameraKickBack = (cameraKickBack < 0.0f) ? 0.0f : cameraKickBack;
+
+	Offset = DirectX::XMVectorScale(DirectX::XMVectorSet(cx * sy, -sx, cx * cy, 0.0f), distance + cameraKickBack);
 	DirectX::XMStoreFloat3(&camera_position, DirectX::XMVectorSubtract(Focus, Offset));
 }
 
@@ -410,16 +720,25 @@ void SceneTutorial::Render()
 	fw_->framebuffers[0]->clear(fw_->immediate_context.Get());
 	fw_->framebuffers[0]->activate(fw_->immediate_context.Get());
 
-	fw_->immediate_context->OMSetBlendState(fw_->blend_states[1].Get(), nullptr, 0xFFFFFFFF);
-	fw_->immediate_context->OMSetDepthStencilState(fw_->depth_stencil_states[0].Get(), 0);
-	fw_->immediate_context->RSSetState(fw_->rasterizer_states[0].Get());
+	fw_->immediate_context->OMSetBlendState(fw_->blend_states[static_cast<size_t>(BLEND_STATE::ALPHA)].Get(), nullptr, 0xFFFFFFFF);
+	fw_->immediate_context->OMSetDepthStencilState(fw_->depth_stencil_states[static_cast<size_t>(DEPTH_STATE::ZT_ON_ZW_ON)].Get(), 0);
+	fw_->immediate_context->RSSetState(fw_->rasterizer_states[static_cast<size_t>(RASTER_STATE::SOLID)].Get());
 
-	D3D11_VIEWPORT viewport{}; UINT num_viewports = 1;
+	D3D11_VIEWPORT viewport{};
+	UINT num_viewports = 1;
 	fw_->immediate_context->RSGetViewports(&num_viewports, &viewport);
+
+	assert(viewport.Height != 0);
+
 	float aspect_ratio = viewport.Width / viewport.Height;
 
-	DirectX::XMMATRIX P = DirectX::XMMatrixPerspectiveFovLH(DirectX::XMConvertToRadians(45), aspect_ratio, 0.1f, 300.0f);
-	DirectX::XMMATRIX V = DirectX::XMMatrixLookAtLH(DirectX::XMLoadFloat3(&camera_position), DirectX::XMLoadFloat3(&camera_focus), DirectX::XMVectorSet(0, 1, 0, 0));
+	DirectX::XMMATRIX P{ DirectX::XMMatrixPerspectiveFovLH(DirectX::XMConvertToRadians(45), aspect_ratio, 0.1f, 300.0f) };
+
+	DirectX::XMMATRIX V = DirectX::XMMatrixLookAtLH(
+		DirectX::XMLoadFloat3(&camera_position),
+		DirectX::XMLoadFloat3(&camera_focus),
+		DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f));
+
 	DirectX::XMStoreFloat4x4(&fw_->data.view_projection, V * P);
 	fw_->data.light_direction = fw_->light_direction;
 
@@ -430,51 +749,92 @@ void SceneTutorial::Render()
 	DirectX::XMMATRIX C = DirectX::XMMatrixIdentity();
 	C.r[0].m128_f32[0] = -1.0f;
 
-	// プレイヤー描画
 	if (skinned_meshes[0])
 	{
 		DirectX::XMFLOAT4X4 world;
-		DirectX::XMStoreFloat4x4(&world, C * DirectX::XMMatrixScaling(0.01f, 0.01f, 0.01f) * DirectX::XMMatrixTranslation(player.position.x, player.position.y, player.position.z));
-		skinned_meshes[0]->render(fw_->immediate_context.Get(), world, { 1,1,1,1 }, &player.keyframe, true);
-	}
-	// 敵・障害物描画
-	if (skinned_meshes[1] && skinned_meshes[4])
-	{
-		for (const auto& e : enemies)
-		{
-			if (!e.isAlive) continue;
-			DirectX::XMFLOAT4X4 world;
-			if (e.type == 2) // 岩
-			{
-				DirectX::XMStoreFloat4x4(&world, C * DirectX::XMMatrixScaling(0.12f, 0.12f, 0.12f) * DirectX::XMMatrixTranslation(e.position.x, e.position.y, e.position.z));
-				skinned_meshes[4]->render(fw_->immediate_context.Get(), world, { 0.4f, 0.4f, 0.4f, 1 }, nullptr, true);
-			}
-			else // 敵
-			{
-				//  回転計算を追加
-				DirectX::XMMATRIX T = DirectX::XMMatrixTranslation(e.position.x, e.position.y, e.position.z);
-				DirectX::XMMATRIX R = DirectX::XMMatrixRotationY(DirectX::XM_PI);
+		DirectX::XMStoreFloat4x4(&world, C * DirectX::XMMatrixScaling(playerScale.x, playerScale.y, playerScale.z) * DirectX::XMMatrixTranslation(player.position.x, player.position.y, player.position.z));
 
-				// 吹き飛び中はグルグル回転させる
-				if (e.isBlownAway)
+		int meshIndex = 0;
+		if (knockState == KnockState::Knocked)      meshIndex = 8;
+		else if (knockState == KnockState::Recover) meshIndex = 9;
+		else if (isSlide)                           meshIndex = 6;
+		else if (isAttackAnim)                      meshIndex = 7;
+		else if (isJumpAnim)                        meshIndex = 10;
+
+		if (skinned_meshes[meshIndex])
+			skinned_meshes[meshIndex]->render(fw_->immediate_context.Get(), world, playerColor, &player.keyframe, false);
+	}
+
+	if (skinned_meshes[1] && skinned_meshes[4] && skinned_meshes[5])
+		for (const auto& enemy : enemies)
+		{
+			if (!enemy.isAlive) continue;
+
+			DirectX::XMMATRIX T =
+				DirectX::XMMatrixTranslation(
+					enemy.position.x,
+					enemy.position.y,
+					enemy.position.z
+				);
+
+			if (enemy.type == 2)
+			{
+				DirectX::XMMATRIX S =
+					DirectX::XMMatrixScaling(
+						rockScale.x,
+						rockScale.y,
+						rockScale.z
+					);
+
+				DirectX::XMFLOAT4X4 world;
+				DirectX::XMStoreFloat4x4(&world, C * S * T);
+
+				skinned_meshes[4]->render(
+					fw_->immediate_context.Get(),
+					world,
+					{ 0.4f, 0.4f, 0.4f, 1.0f },
+					nullptr,
+					false
+				);
+			}
+			else
+			{
+				DirectX::XMMATRIX R = DirectX::XMMatrixRotationY(DirectX::XMConvertToRadians(180));
+				if (enemy.isBlownAway)
 				{
 					R *= DirectX::XMMatrixRotationRollPitchYaw(
-						DirectX::XMConvertToRadians(e.blowAngleX),
-						DirectX::XMConvertToRadians(e.blowAngleY),
+						DirectX::XMConvertToRadians(enemy.blowAngleX),
+						DirectX::XMConvertToRadians(enemy.blowAngleY),
 						0.0f
 					);
 				}
 
-				DirectX::XMMATRIX S = DirectX::XMMatrixScaling(0.01f, 0.01f, 0.01f);
+				DirectX::XMMATRIX S =
+					DirectX::XMMatrixScaling(
+						enemyScale.x,
+						enemyScale.y,
+						enemyScale.z
+					);
 
+				DirectX::XMFLOAT4X4 world;
 				DirectX::XMStoreFloat4x4(&world, C * S * R * T);
 
-				DirectX::XMFLOAT4 col = (e.type == 0) ? DirectX::XMFLOAT4(1, 0.5f, 0.5f, 1) : DirectX::XMFLOAT4(0.5f, 0.5f, 1, 1);
-				skinned_meshes[1]->render(fw_->immediate_context.Get(), world, col, &e.keyframe);
+				auto* enemyMesh =
+					(enemy.animState == EnemyAnimState::Kick)
+					? skinned_meshes[11].get()
+					: skinned_meshes[enemy.type == 0 ? 1 : 5].get();
+
+				enemyMesh->render(
+					fw_->immediate_context.Get(),
+					world,
+					{ 1,1,1,1 },
+					&enemy.keyframe,
+					true
+				);
+
 			}
 		}
-	}
-	// ステージ描画
+
 	if (skinned_meshes[2])
 	{
 		for (const auto& s : stages)
@@ -484,7 +844,6 @@ void SceneTutorial::Render()
 			skinned_meshes[2]->render(fw_->immediate_context.Get(), world, { 1,1,1,1 }, nullptr, false);
 		}
 	}
-	// 攻撃エフェクト
 	if (attack_state && skinned_meshes[3])
 	{
 		DirectX::XMFLOAT4X4 world;
@@ -493,84 +852,100 @@ void SceneTutorial::Render()
 	}
 
 	fw_->framebuffers[0]->deactivate(fw_->immediate_context.Get());
-
-	// ポストプロセス
 	if (fw_->enable_bloom)
 	{
 		fw_->bloomer->make(fw_->immediate_context.Get(), fw_->framebuffers[0]->shader_resource_views[0].Get());
+
 		fw_->framebuffers[1]->clear(fw_->immediate_context.Get());
 		fw_->framebuffers[1]->activate(fw_->immediate_context.Get());
-		fw_->immediate_context->OMSetDepthStencilState(fw_->depth_stencil_states[3].Get(), 0);
-		fw_->immediate_context->RSSetState(fw_->rasterizer_states[2].Get());
-		fw_->immediate_context->OMSetBlendState(fw_->blend_states[1].Get(), nullptr, 0xFFFFFFFF);
+
+		fw_->immediate_context->OMSetDepthStencilState(fw_->depth_stencil_states[static_cast<size_t>(DEPTH_STATE::ZT_OFF_ZW_OFF)].Get(), 0);
+		fw_->immediate_context->RSSetState(fw_->rasterizer_states[static_cast<size_t>(RASTER_STATE::CULL_NONE)].Get());
+		fw_->immediate_context->OMSetBlendState(fw_->blend_states[static_cast<size_t>(BLEND_STATE::ALPHA)].Get(), nullptr, 0xFFFFFFFF);
 		ID3D11ShaderResourceView* bloom_srvs[] =
 		{
 			fw_->framebuffers[0]->shader_resource_views[0].Get(),
 			fw_->bloomer->shader_resource_view(),
 		};
+
 		fw_->bit_block_transfer->blit(fw_->immediate_context.Get(), bloom_srvs, 0, 2, fw_->pixel_shaders[2].Get());
 		fw_->framebuffers[1]->deactivate(fw_->immediate_context.Get());
 	}
+
+	if (fw_->enable_radial_blur)
+	{
+		fw_->immediate_context->OMSetDepthStencilState(fw_->depth_stencil_states[static_cast<size_t>(DEPTH_STATE::ZT_OFF_ZW_OFF)].Get(), 0);
+		fw_->immediate_context->RSSetState(fw_->rasterizer_states[static_cast<size_t>(RASTER_STATE::CULL_NONE)].Get());
+
+		ID3D11ShaderResourceView* blur_srvs[] =
+		{
+			fw_->framebuffers[1]->shader_resource_views[0].Get()
+		};
+
+		fw_->bit_block_transfer->blit(fw_->immediate_context.Get(), blur_srvs, 0, 1, fw_->pixel_shaders[0].Get());
+	}
 	else
 	{
-		fw_->framebuffers[1]->clear(fw_->immediate_context.Get());
-		fw_->framebuffers[1]->activate(fw_->immediate_context.Get());
-		fw_->bit_block_transfer->blit(fw_->immediate_context.Get(), fw_->framebuffers[0]->shader_resource_views[0].GetAddressOf(), 0, 1, fw_->pixel_shaders[2].Get());
-		fw_->framebuffers[1]->deactivate(fw_->immediate_context.Get());
+		fw_->bit_block_transfer->blit(fw_->immediate_context.Get(), fw_->framebuffers[1]->shader_resource_views[0].GetAddressOf(), 0, 1, fw_->pixel_shaders[2].Get());
 	}
-
-	fw_->bit_block_transfer->blit(fw_->immediate_context.Get(), fw_->framebuffers[1]->shader_resource_views[0].GetAddressOf(), 0, 1, fw_->pixel_shaders[2].Get());
-
 	DrawNumber((int)currentStep + 1, 100, 30, 0.5f, fw_->immediate_context.Get());
 }
 
 void SceneTutorial::DrawNumber(int number, float x, float y, float scale, ID3D11DeviceContext* ctx)
 {
-	if (!sprite_batches[0]) return;
-	const float cellW = 256.0f;
-	const float cellH = 303.33f;
-	int digit = number % 10;
-	float sx = (digit % 4) * cellW;
-	float sy = (digit / 4) * cellH;
-	sprite_batches[0]->begin(fw_->immediate_context.Get());
-	sprite_batches[0]->render(ctx, x, y, cellW * scale, cellH * scale, 1, 1, 1, 1, 0.0f, sx, sy, cellW, cellH);
-	sprite_batches[0]->end(fw_->immediate_context.Get());
+	const float BASE_W = 2000.0;
+	const float BASE_H = 2000.0;
+
+	int spriteIndex = -1;
+
+	switch (currentStep)
+	{
+	case TutorialStep::Welcome: spriteIndex = 1; break;
+	case TutorialStep::Move:    spriteIndex = 2; break;
+	case TutorialStep::Jump:    spriteIndex = 3; break;
+	case TutorialStep::Attack:  spriteIndex = 4; break;
+	case TutorialStep::Complete:  spriteIndex = 5; break;
+	default: break;
+	}
+
+	float floatY = sinf(stepTimer * 1.6f) * 20.0f;
+
+	float pop = 0.0f;
+	if (tutorialTextTimer < 0.15f)
+	{
+		float p = tutorialTextTimer / 0.15f;
+		pop = (1.0f - p) * 0.2f; // 最大 +20%
+	}
+	if (tutorialTextTimer < 0.2f)
+	{
+		fw_->radial_blur_data.blur_strength = 0.15f;
+	}
+	if (spriteIndex != -1 && sprite_batches[spriteIndex])
+	{
+		const float BASE_W = 2000.0f;
+		const float BASE_H = 2000.0f;
+
+		sprite_batches[spriteIndex]->begin(ctx);
+
+		sprite_batches[spriteIndex]->render(
+			ctx,
+			spritePos[spriteIndex - 1].x,
+			spritePos[spriteIndex - 1].y + floatY,
+			BASE_W * tutorialSpriteScale * tutorialTextScale * (1.0f + pop),
+			BASE_H * tutorialSpriteScale * tutorialTextScale * (1.0f + pop)
+		);
+
+		sprite_batches[spriteIndex]->end(ctx);
+
+	}
+
+
 }
 
 void SceneTutorial::DrawGUI()
 {
 #ifdef USE_IMGUI
-	ImGui::SetNextWindowPos(ImVec2(50, 50), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(300, 150), ImGuiCond_FirstUseEver);
-	ImGui::Begin("Tutorial");
-
-	switch (currentStep)
-	{
-	case TutorialStep::Welcome:
-		ImGui::TextColored(ImVec4(1, 1, 0, 1), "Welcome to Tutorial!");
-		ImGui::Text("Let's learn how to play.");
-		ImGui::Text("Press [ENTER] to Start");
-		break;
-	case TutorialStep::Move:
-		ImGui::TextColored(ImVec4(0, 1, 0, 1), "Step 1: MOVE");
-		ImGui::Text("Press 'A' or 'Left' to go Left.");
-		ImGui::Text("Press 'D' or 'Right' to go Right.");
-		break;
-	case TutorialStep::Jump:
-		ImGui::TextColored(ImVec4(0, 1, 0, 1), "Step 2: JUMP");
-		ImGui::Text("Press 'SPACE' to Jump over rocks.");
-		break;
-	case TutorialStep::Attack:
-		ImGui::TextColored(ImVec4(1, 0, 0, 1), "Step 3: ATTACK");
-		ImGui::Text("Left Click: Red Punch");
-		ImGui::Text("Right Click: Blue Kick");
-		ImGui::Text("Defeat Red: %d/3, Blue: %d/3", tutorialDefeatedRed, tutorialDefeatedBlue);
-		break;
-	case TutorialStep::Complete:
-		ImGui::TextColored(ImVec4(0, 1, 1, 1), "COMPLETED!");
-		ImGui::Text("Good luck in the main game.");
-		break;
-	}
+	ImGui::Begin("Game Settings");
 	ImGui::End();
 #endif
 }

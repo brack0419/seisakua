@@ -14,8 +14,8 @@ sky_map::sky_map(ID3D11Device* device, const wchar_t* filename, bool generate_mi
 		is_texturecube = true;
 	}
 
-	create_vs_from_cso(device, "sky_map_vs.cso", sky_map_vs.GetAddressOf(), NULL, NULL, 0);
-	create_ps_from_cso(device, "sky_map_ps.cso", sky_map_ps.GetAddressOf());
+	create_vs_from_cso(device, "Shaders/sky_map_vs.cso", sky_map_vs.GetAddressOf(), NULL, NULL, 0);
+	create_ps_from_cso(device, "Shaders/sky_map_ps.cso", sky_map_ps.GetAddressOf());
 
 	D3D11_BUFFER_DESC buffer_desc{};
 	buffer_desc.ByteWidth = sizeof(constants);

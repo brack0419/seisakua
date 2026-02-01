@@ -5,6 +5,10 @@
 #include <vector>
 #include <memory>
 #include "skinned_mesh.h"
+#include <algorithm> // for min/max/clamp
+
+// 定数定義 (SceneGameと同様)
+#define P_ACCELE 2.5f
 
 // チュートリアルの進行状態
 enum class TutorialStep
@@ -34,7 +38,11 @@ public:
 private:
 	CONST HWND hwnd;
 	framework* fw_;
-
+	enum class SAMPLER_STATE { POINT, LINEAR, ANISOTROPIC, LINEAR_BORDER_BLACK, LINEAR_BORDER_WHITE, LINEAR_CLAMP };
+	enum class DEPTH_STATE { ZT_ON_ZW_ON, ZT_ON_ZW_OFF, ZT_OFF_ZW_ON, ZT_OFF_ZW_OFF };
+	enum class BLEND_STATE { NONE, ALPHA, ADD, MULTIPLY };
+	enum class RASTER_STATE { SOLID, WIREFRAME, CULL_NONE, WIREFRAME_CULL_NONE };
+	std::unique_ptr<bloom> bloomer;
 	// 進行状態管理
 	TutorialStep currentStep = TutorialStep::Welcome;
 	float stepTimer = 0.0f;
@@ -59,8 +67,10 @@ private:
 	float distance{ 8.0f };
 
 	// メッシュ
-	std::unique_ptr<skinned_mesh> skinned_meshes[6];
-	std::unique_ptr<sprite_batch> sprite_batches[1]; // 数字用
+	// 0:PlayerRun 1:EnemyRed 2:Stage 3:Box 4:Obstacle 
+	// 5:EnemyBlue 6:Slide 7:Attack 8:Knocked 9:Recover 10:Jump 11:EnemyKick
+	std::unique_ptr<skinned_mesh> skinned_meshes[15];
+	std::unique_ptr<sprite_batch> sprite_batches[15]; // 数字用
 
 	// 音声
 	AudioSource* SE_PANCHI = nullptr;
@@ -82,7 +92,6 @@ private:
 		float jumpPower = 20.0f;
 
 		animation::keyframe keyframe;
-		float animationTime = 0.0f;
 
 		bool wasLeftPressed = false;
 		bool wasRightPressed = false;
@@ -91,14 +100,64 @@ private:
 	};
 	Player player;
 
+	// アニメーション・演出用変数 (SceneGameから移植)
+	float player_anim_time = 0.0f;
+	int   player_anim_index = 0;
+
+	// スライド
+	bool isSlide = false;
+	float slideTimer = 0.0f;
+	int slide_anim_index = 0;
+	float slide_anim_time = 0.0f;
+
+	// 攻撃アニメ
+	bool isAttackAnim = false;
+	float attackAnimTimer = 0.0f;
+	float attack_anim_time = 0.0f;
+
+	// ジャンプアニメ
+	bool isJumpAnim = false;
+	float jump_anim_time = 0.0f;
+
+	// ダメージ・復帰アニメ
+	bool isKnockedAnim = false;
+	float knockedAnimTimer = 0.0f;
+	float knocked_anim_time = 0.0f;
+	enum class KnockState { None, Knocked, Recover };
+	KnockState knockState = KnockState::None;
+
+	// 定数 (SceneGameから移植)
+	const float KNOCKED_ANIM_SPEED = 1.0f;
+	const float RECOVER_ANIM_SPEED = 0.9f;
+
+	// 演出用
+	float shakeTimer = 0.0f;
+	float shakePower = 0.0f;
+	float knockBlurTimer = 0.0f;
+	float cameraKickBack = 0.0f;
+	float blurFade = 0.0f;
+	const float BLUR_FADE_SPEED = 4.0f;
 	// 敵・障害物
+	enum class EnemyAnimState
+	{
+		Run,
+		Kick
+	};
+
 	struct Enemy
 	{
 		DirectX::XMFLOAT3 position;
 		bool isAlive = true;
 		int type = 0; // 0:赤, 1:青, 2:岩
+
 		animation::keyframe keyframe;
 		float animationTime = 0.0f;
+		EnemyAnimState animState = EnemyAnimState::Run;
+		bool isHitAnim = false;
+		float runAnimTime = 0.0f;
+		float kickAnimTime = 0.0f;
+		float hitAnimTime = 0.0f;
+
 		bool isBlownAway = false;                 // 吹き飛び中フラグ
 		DirectX::XMFLOAT3 blowVelocity{ 0, 0, 0 }; // 吹き飛び速度
 		float blowAngleX = 0.0f;                  // 回転角度
@@ -130,12 +189,28 @@ private:
 	const float STAGE_TILE_LENGTH = 60.0f;
 	const int MAX_STAGE_TILES = 5;
 
-	// アニメーション管理
-	float player_anim_time = 0.0f;
+	// 色
+	DirectX::XMFLOAT4 playerColor{ 1,1,1,1 };
+	DirectX::XMFLOAT3 playerScale{ 0.02f, 0.02f, 0.02f };
+	DirectX::XMFLOAT3 enemyScale{ 0.02f,0.02f,0.02f };
+	DirectX::XMFLOAT3 rockScale{ 0.12f, 0.12f, 0.12f };
+	// スプライト位置（ImGuiで調整用）
+	DirectX::XMFLOAT2 spritePos[5] =
+	{
+		{ -91.0f,   -212.0f },   // sprite_batches[1]
+		{1011.0f, -203.0f },   // sprite_batches[2]
+		{ -91.0f,   -212.0f}, // sprite_batches[3]
+		{1011.0f, -203.0f },  // sprite_batches[4]
+		{400, 0 }  // sprite_batches[4]
+	};
+	float tutorialSpriteScale = 0.5f;
+	float tutorialTextTimer = 0.0f;
+	float tutorialTextScale = 0.8f;
+	TutorialStep prevStep;
 
 	// 関数
 	void UpdatePlayer(float elapsedTime);
-	void UpdateCamera();
+	void UpdateCamera(float elapsedTime);
 	void UpdateTutorialFlow(float elapsedTime); // チュートリアル進行管理
 	void InputAttack();
 	void SpawnDummyEnemy();

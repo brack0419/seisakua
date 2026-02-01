@@ -66,16 +66,25 @@ public:
 	};
 	scene_constants data{};
 
-	DirectX::XMFLOAT2 timePosition = { 1325.0f,404.0f };
+	DirectX::XMFLOAT2 timePosition = { 1340.0f,820.0f };
+	DirectX::XMFLOAT2 Pos = { 1100.0f, 20.0f };
+	DirectX::XMFLOAT2 scalePos = { 780.0f, 1050.0f };
 
-	float timeScale = 0.22f;
+	float timeScale = 0.3f;
 	int defeatedEnemies = 0;
+	int maxSpeed = 0;
 
-	float speedScale = 0.27f;
-	DirectX::XMFLOAT2 speedPos = { 288.0f,624.0f };;
+	float killScore = 0.0f;
+	float timeScore = 0.0f;
+	float speedScore = 0.0f;
+	float score01 = 0.0f;
+	int finalScore = 0.0f;
 
-	DirectX::XMFLOAT2 scorePosition = { 332.0f, 386.0f };
-	float scoreScale = 0.33f;
+	float speedScale = 0.3f;
+	DirectX::XMFLOAT2 speedPos = { 1365.0f,550.0f };
+
+	DirectX::XMFLOAT2 scorePosition = { 1365.0f, 235.0f };
+	float scoreScale = 0.3f;
 
 	DirectX::XMFLOAT3 camera_position{ 0.0f, 0.0f, -10.0f };
 	//DirectX::XMFLOAT4 camera_position{ 0.0f, 0.0f, -10.0f, 1.0f };
@@ -87,6 +96,44 @@ public:
 	float wheel{ 0 };
 	float distance{ 0.1f };
 
+	float player_anim_time = 0.0f;
+	int   player_anim_index = 1;
+	float enemy_anim_time = 0.0f;
+	int   enemy_anim_index = 0;
+
+	float Clamp01(float v)
+	{
+		if (v < 0.0f) return 0.0f;
+		if (v > 1.0f) return 1.0f;
+		return v;
+	}
+
+	struct Player
+	{
+		DirectX::XMFLOAT3 position{ 0,0,0 };
+		DirectX::XMFLOAT3 velocity{ 0,0,0 };
+
+		int currentLane = 1;
+		float laneWidth = 5.0f;
+		float laneChangeSpeed = 20.0f;
+		float moveSpeed = 15.0f;
+
+		bool isGround = true;
+		float gravity = -50.0f;
+		float jumpPower = 20.0f;
+
+		animation::keyframe keyframe;
+		float animationTime = 0.0f;
+		int animationIndex = 0;
+
+		bool wasLeftPressed = false;
+		bool wasRightPressed = false;
+
+		float knockbackTimer = 0.0f;
+		float knockbackVelocityZ = 0.0f;
+	};
+	Player player;
+
 	DirectX::XMFLOAT3 center_of_rotation;
 	DirectX::XMFLOAT3 scaling{ 1, 1, 1 };
 
@@ -97,12 +144,13 @@ public:
 	// End_building
 	DirectX::XMFLOAT4 material_color1{ 1 ,1, 1, 1 };
 	DirectX::XMFLOAT3 rotation_object3{ 0.0f, 1.4f, 0.0f };
-	DirectX::XMFLOAT3 translation_object3{ -18.5f, -32.68f, 26.0f };
+	DirectX::XMFLOAT3 translation_object3{ -16.f, -31.0f, 30.0f };
 
 	// End_building2
 	DirectX::XMFLOAT4 material_color2{ 1 ,1, 1, 1 };
-	DirectX::XMFLOAT3 rotation_object4{ 0.0f, 1.4f, 0.0f };
-	DirectX::XMFLOAT3 translation_object4{ -17.0f, -20.0f, 26.0f };
+	DirectX::XMFLOAT3 rotation_object4{ 0.0f, 1.8f, 0.0f };
+	DirectX::XMFLOAT3 translation_object4{ 3.8f, -0.9f, -17.3f };
+	DirectX::XMFLOAT3 scaling4{ 0.025f, 0.025f, 0.025f };
 
 	// End_building3
 	DirectX::XMFLOAT4 material_color3{ 1 ,1, 1, 1 };
@@ -116,6 +164,8 @@ public:
 	float skyboxScale = 1.0f;
 
 	void DrawNumber(int number, float x, float y, float scale);
+
+	void ChangePlayerAnimation(int newIndex);
 
 private:
 	framework* fw_;

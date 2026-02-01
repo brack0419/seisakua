@@ -11,6 +11,7 @@
 class SceneGame : public Scene
 {
 public:
+	AudioSource* bgmGame[5] = {};
 
 	float kariN = 7.0f;
 	float kariScale = 0.2f;
@@ -84,7 +85,6 @@ public:
 	// =========================
 	// ƒTƒEƒ“ƒh
 	// =========================
-	AudioSource* bgmGame = nullptr;
 	AudioSource* SE_PANCHI = nullptr;
 	AudioSource* SE_KICK = nullptr;
 	AudioSource* SE_MISS = nullptr;

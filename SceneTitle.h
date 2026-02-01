@@ -12,6 +12,7 @@
 class SceneTitle : public Scene
 {
 public:
+
 	int music_Num = 0;
 
 	float kariScale = 0.2f;
@@ -246,10 +247,31 @@ private:
 	int model_order[3]{ 0,1,2 };
 	int model_order_index = 0;
 
+	DirectX::XMFLOAT2 namePos = { 650.0f, 480.0f }; // 初期位置 (画面中央下あたり)
+	float nameScale = 0.224f;                         // 初期サイズ
+
 	// ランキングデータ保持用
 	std::vector<RankingData> rankingData;
 	std::mutex rankingMutex; // スレッド競合防止用
 
 	// 数字描画用 (SceneGameから持ってくる必要がある)
 	void DrawNumber(int number, float x, float y, float scale, ID3D11DeviceContext* ctx);
+
+	std::unique_ptr<sprite_batch> font_alpha_batch; // アルファベット用バッチ
+	std::string inputName = "player"; // 入力中の名前 (初期値)
+	bool keyState[256] = {};          // キー押しっぱなし防止用
+
+	// 文字列描画用関数
+	void DrawString(std::string str, float x, float y, float scale);
+
+	// --- ランキング表示調整用 ---
+	float rankingStartY = 662.0f;      // 1位が表示されるY座標
+	float rankingLineSpacing = 119.0f;  // 行間 (Y方向のスペース)
+	float rankingScale = 0.173f;         // 文字の大きさ
+
+	// 各項目のX座標
+	float rankPosX = 638.0f;           // 順位のX座標
+	float rankingNamePosX = 808.0f;    // 名前のX座標
+	float rankingTimePosX = 1338.0f;    // タイムのX座標
+	float rankingKillsPosX = 1700.0f;  // キル数のX座標
 };

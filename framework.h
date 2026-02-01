@@ -293,6 +293,25 @@ public:
 	int frame_time_index = 0;
 	bool frame_times_filled = false;
 
+	// 画像スプライト
+	std::unique_ptr<sprite> sprite_juni; // タイトルロゴ
+	std::unique_ptr<sprite> sprite_saikoTime;   // 説明
+	std::unique_ptr<sprite> sprite_saikokill;      // 操作
+	std::unique_ptr<sprite> sprite_kaisi;    // ランキング
+
+	// 変換パラメータ管理用構造体
+	struct TransformData {
+		DirectX::XMFLOAT2 pos = { 0, 0 }; // 位置(X,Y)
+		float scale = 1.0f;               // スケール
+		float rotation = 0.0f;            // 回転(ラジアン)
+	};
+
+	// 各画像のパラメータ
+	TransformData tf_juni;
+	TransformData tf_saikoTime;
+	TransformData tf_saikokill;
+	TransformData tf_kaisi;
+
 	framework(HWND hwnd);
 	~framework();
 
