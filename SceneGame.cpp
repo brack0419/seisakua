@@ -9,8 +9,13 @@
 #include <cmath>
 #undef min
 #undef max
+#include "Leaderboard.h"
+
 
 float saveSpeed = 0.0f;
+
+int globalMaxKills = 0;       // 最高キル数
+float globalBestTime = 0.0f;  // 最速タイム
 
 SceneGame::SceneGame(HWND hwnd, framework* fw) : hwnd(hwnd), fw_(fw)
 {
@@ -39,7 +44,7 @@ void SceneGame::Initialize()
 	skinned_meshes[11] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\enemy_red_kick.cereal");
 
 
-	sprite_batches[0] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\fontS.png", 1);
+	sprite_batches[0] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\fontN.png", 1);
 
 	auto& audio = Audio::Instance();
 	SE_PANCHI = audio.LoadAudioSource(".\\resources\\panchi.wav");
@@ -59,7 +64,7 @@ void SceneGame::Initialize()
 	player.isGround = true;
 	player.knockbackTimer = 0.0f;
 	player.knockbackVelocityZ = 0.0f;
-	player.moveSpeed = (P_ACCELE * 7);
+	player.moveSpeed = (P_ACCELE * 3);
 
 	gameTime = 0.0f;
 
@@ -102,6 +107,8 @@ void SceneGame::Finalize()
 		delete bgmGame;
 		bgmGame = nullptr;
 	}
+
+
 }
 
 // 更新処理
@@ -134,6 +141,12 @@ void SceneGame::Update(float elapsedTime)
 
 		if (goalTimer >= 5.0f)
 		{
+			if (!isScoreSent)
+			{
+				Leaderboard::SendScore("Player", gameTime, defeatedCount);
+				isScoreSent = true; // 送信済みにする
+			}
+
 			SceneManager::instance().ChangeScene(new SceneEnd(fw_, gameTime, defeatedCount));
 		}
 		return;
@@ -352,7 +365,10 @@ void SceneGame::UpdatePlayer(float elaspedTime)
 		slideTimer += elaspedTime;
 
 		animation& anim = skinned_meshes[6]->animation_clips[0];
-		slide_anim_time += elaspedTime;
+
+		// ★変更点1: アニメーションの再生速度を上げる (例: 1.0f → 2.0f で2倍速)
+		float playSpeed = 2.0f;
+		slide_anim_time += elaspedTime * playSpeed;
 
 		int frame = static_cast<int>(slide_anim_time * anim.sampling_rate);
 		if (frame >= static_cast<int>(anim.sequence.size()))
@@ -362,7 +378,8 @@ void SceneGame::UpdatePlayer(float elaspedTime)
 
 		player.keyframe = anim.sequence[frame];
 
-		const float SLIDE_DURATION = 1.5f;
+		// ★変更点2: スライド状態の継続時間を短くする (例: 1.5f → 0.75f)
+		const float SLIDE_DURATION = 0.75f;
 
 		if (slideTimer >= SLIDE_DURATION)
 		{
@@ -621,7 +638,7 @@ void SceneGame::InputAttack()
 	{
 		attack_timer++;
 		if (attack_timer == 20) attack_hit_enable = false;
-		if (attack_timer >= 30)
+		if (attack_timer >= 2)
 		{
 			attack_state = false;
 			attack_type = AttackType::None;
@@ -1025,13 +1042,13 @@ void SceneGame::Render()
 	}
 
 	int speed = static_cast<int>(player.moveSpeed / P_ACCELE);
-	DrawNumber(speed, 200, 30, 0.6f, fw_->immediate_context.Get());
+	DrawNumber(speed, speedPos.x, speedPos.y, speedScale, 5, fw_->immediate_context.Get());
 
 	int remainDistance = static_cast<int>(std::max(0.0f, GOAL_DISTANCE - player.position.z));
 
 	// 画面右上に距離を表示
 
-	DrawNumber(remainDistance, 1000, 30, 0.6f, fw_->immediate_context.Get());
+	DrawNumber(remainDistance, MPos.x, MPos.y, MScale, 5, fw_->immediate_context.Get());
 }
 
 void SceneGame::DrawGUI()
@@ -1047,6 +1064,14 @@ void SceneGame::DrawGUI()
 		&playerColor.x,
 		ImGuiColorEditFlags_Float
 	);
+
+	ImGui::Text("--- speed Display ---");
+	ImGui::DragFloat2("speed Pos", &speedPos.x, 1.0f);
+	ImGui::DragFloat("speed Scale", &speedScale, 0.01f);
+
+	ImGui::Text("--- M Display ---");
+	ImGui::DragFloat2("M Pos", &MPos.x, 1.0f);
+	ImGui::DragFloat("M Scale", &MScale, 0.01f);
 
 	ImGui::SliderFloat("camera_position.x", &fw_->camera_position.x, -100.0f, +100.0f);
 	ImGui::SliderFloat("camera_position.y", &fw_->camera_position.y, -100.0f, +100.0f);
@@ -1103,10 +1128,10 @@ void SceneGame::DrawGUI()
 	ImGui::End();
 #endif
 }
-void SceneGame::DrawNumber(int number, float x, float y, float scale, ID3D11DeviceContext* ctx)
+void SceneGame::DrawNumber(int number, float x, float y, float scale, int sukima, ID3D11DeviceContext* ctx)
 {
-	const float cellW = 256.0f;
-	const float cellH = 303.33f;
+	const float cellW = 507.0f;
+	const float cellH = 476.00f;
 
 	std::string str = std::to_string(number);
 	float posX = x;
@@ -1135,6 +1160,6 @@ void SceneGame::DrawNumber(int number, float x, float y, float scale, ID3D11Devi
 		);
 		sprite_batches[0]->end(fw_->immediate_context.Get());
 
-		posX += cellW / 2;
+		posX += cellW / sukima;
 	}
 }

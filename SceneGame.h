@@ -2,11 +2,13 @@
 
 #include "framework.h"
 #include "Scene.h"
-#include "skinned_mesh.h"
 #include <vector>
 #include <memory>
+#include "skinned_mesh.h"
 
-#define P_ACCELE 2.5f
+#define P_ACCELE 5.0f
+
+
 
 class SceneGame : public Scene
 {
@@ -14,7 +16,16 @@ public:
 	// =========================
 	// 定数・状態
 	// =========================
-	const float GOAL_DISTANCE = 5000.0f;
+	float speedScale = 0.2f;
+	DirectX::XMFLOAT2 speedPos = { 130.0f,930.0f };;
+
+	float MScale = 0.2f;
+	DirectX::XMFLOAT2 MPos = { 1450.0f,930.0f };;
+
+	const float GOAL_DISTANCE = 1200.0f;
+
+	DirectX::XMFLOAT4 attack_c = { 1.0f, 1.0f, 1.0f, 1.0f };
+
 
 	bool isGoal = false;
 	float goalTimer = 0.0f;
@@ -23,7 +34,6 @@ public:
 	int defeatedCount = 0;
 	float gameTime = 0.0f;
 
-	DirectX::XMFLOAT4 attack_c{ 1,1,1,1 };
 
 	// =========================
 	// 入力・攻撃
@@ -44,8 +54,9 @@ public:
 	enum class CameraMode { Follow, Goal };
 	CameraMode cameraMode = CameraMode::Follow;
 
-	DirectX::XMFLOAT3 camera_position{ 0,0,0 };
-	DirectX::XMFLOAT3 camera_focus{ 0,0.283f,-10 };
+	DirectX::XMFLOAT3 camera_position{ 0.0f, 0.0f, 0.0f };
+	DirectX::XMFLOAT3 camera_focus{ 0.0f, 0.283f, -10.0f };
+
 	DirectX::XMFLOAT3 goalCameraPosition{};
 	DirectX::XMFLOAT3 goalCameraFocus{};
 
@@ -53,7 +64,7 @@ public:
 	float rotateY = DirectX::XMConvertToRadians(0);
 	float distance = 8.0f;
 
-	DirectX::XMFLOAT4 light_direction{ 0,-0.8f,1,0 };
+	DirectX::XMFLOAT4 light_direction{ 0.0, -0.8f, 1.0f, 0.0f };
 
 	// =========================
 	// シーン定数バッファ
@@ -111,7 +122,7 @@ public:
 	void Render() override;
 	void DrawGUI() override;
 
-	void DrawNumber(int number, float x, float y, float scale, ID3D11DeviceContext* ctx);
+	void DrawNumber(int number, float x, float y, float scale,int sukima, ID3D11DeviceContext* ctx);
 
 private:
 	// =========================
@@ -236,6 +247,10 @@ private:
 	bool isJumpAnim = false;
 	float jump_anim_time = 0.0f;
 	float jumpAnimSpeed = 1.0f;
+
+	
+
+	bool isScoreSent = false; // ★追加: スコア送信済みフラグ
 
 	// =========================
 	// ヘルパー

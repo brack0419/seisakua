@@ -3,7 +3,9 @@
 #include "framework.h"
 #include "Scene.h"
 #include "System/Sprite.h"
-
+#include "sprite_batch.h"
+#include "Leaderboard.h" // 追加
+#include <mutex> // 追加
 //==================================================
 // タイトルシーン
 //==================================================
@@ -57,6 +59,16 @@ public:
 	Microsoft::WRL::ComPtr<ID3D11RasterizerState> rasterizer_states[4];
 
 	std::unique_ptr<bloom> bloomer;
+
+	//  数字描画用のバッチと関数
+	std::unique_ptr<sprite_batch> font_batch;
+	void DrawNumber(int number, float x, float y, float scale);
+
+	//  表示位置とサイズ調整用
+	DirectX::XMFLOAT2 bestScorePos = { 1500.0f, 100.0f }; // 画面右上あたり
+	float bestScoreScale = 0.4f;
+	DirectX::XMFLOAT2 bestTimePos = { 1500.0f, 180.0f };
+	float bestTimeScale = 0.3f;
 
 	float gameTime = 0.0;
 	int defeatedCount = 0;
@@ -221,4 +233,11 @@ private:
 
 	int model_order[3]{ 0,1,2 };
 	int model_order_index = 0;
+
+	// ランキングデータ保持用
+	std::vector<RankingData> rankingData;
+	std::mutex rankingMutex; // スレッド競合防止用
+
+	// 数字描画用 (SceneGameから持ってくる必要がある)
+	void DrawNumber(int number, float x, float y, float scale, ID3D11DeviceContext* ctx);
 };

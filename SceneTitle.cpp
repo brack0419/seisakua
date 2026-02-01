@@ -9,13 +9,22 @@
 #include <algorithm>
 #include <random>
 #include "SceneEnd.h"
+
+extern int globalMaxKills;
+extern float globalBestTime;
+
 SceneTitle::SceneTitle(framework* fw) : fw_(fw)
 {
 }
 
 void SceneTitle::Initialize()
 {
+	//MessageBoxA(NULL, "SceneTitle::Initialize Started!", "Debug", MB_OK);
+
 	HRESULT hr{ S_OK };
+
+	// ★追加: フォント画像の読み込み
+	font_batch = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\fontS.png", 1);
 
 	skinned_meshes[0] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\title_text.cereal");
 	skinned_meshes[1] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\base.cereal");
@@ -26,6 +35,8 @@ void SceneTitle::Initialize()
 	skinned_meshes[6] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\sword.cereal");
 	skinned_meshes[7] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\player_idle2.cereal");
 	skinned_meshes[8] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\player_idle3.cereal");
+
+	//sprite_batches[10] = std::make_unique<sprite_batch>(fw_->device.Get(), L".\\resources\\fontS.png", 1);
 
 	for (int i = 0; i < 20; ++i)
 	{
@@ -82,6 +93,14 @@ void SceneTitle::Initialize()
 	bloom_base_threshold = fw_->bloomer->bloom_extraction_threshold;
 	bloom_base_intensity = fw_->bloomer->bloom_intensity;
 	radial_blur_base = fw_->enable_radial_blur;
+
+	// ★ ランキング取得開始
+	Leaderboard::FetchRanking([this](const std::vector<RankingData>& data) {
+		// データの受け取り（排他制御）
+		std::lock_guard<std::mutex> lock(this->rankingMutex);
+		this->rankingData = data;
+		});
+
 }
 
 void SceneTitle::Finalize()
@@ -681,6 +700,69 @@ void SceneTitle::Render()
 		);
 		sprite_batches[direction_frame]->end(fw_->immediate_context.Get());
 	}
+
+	
+
+	// ★ ランキング描画
+	// スレッドセーフにデータにアクセス
+	std::lock_guard<std::mutex> lock(rankingMutex);
+
+	float startY = 200.0f; // 表示開始Y座標
+	int rank = 1;
+
+	for (const auto& data : rankingData)
+	{
+		// 順位
+		DrawNumber(rank, 100, startY, 0.4f, fw_->immediate_context.Get());
+
+		// タイム (秒)
+		DrawNumber((int)data.time, 300, startY, 0.4f, fw_->immediate_context.Get());
+
+		// キル数
+		DrawNumber(data.kills, 600, startY, 0.4f, fw_->immediate_context.Get());
+
+		startY += 50.0f; // 行間
+		rank++;
+	}
+
+}
+
+
+
+void SceneTitle::DrawNumber(int number, float x, float y, float scale, ID3D11DeviceContext* ctx)
+{
+	// SceneGame.cpp の実装と同じもの。ただし使う sprite_batches のインデックスに注意
+	const float cellW = 256.0f;
+	const float cellH = 303.33f;
+
+	std::string str = std::to_string(number);
+	float posX = x;
+
+	for (char c : str)
+	{
+		int digit = c - '0';
+		if (digit < 0 || digit > 9) continue;
+
+		int col = digit % 4;
+		int row = digit / 4;
+
+		float sx = col * cellW;
+		float sy = row * cellH;
+
+		font_batch->begin(fw_->immediate_context.Get());
+		font_batch->render(
+			fw_->immediate_context.Get(),
+			posX, y,
+			cellW * scale, cellH * scale,
+			1, 1, 1, 1,
+			0.0f,
+			sx, sy,
+			cellW, cellH
+		);
+		font_batch->end(fw_->immediate_context.Get());
+
+		//posX += (cellW * scale) * 0.7f;
+	}
 }
 
 void SceneTitle::DrawGUI()
@@ -862,6 +944,14 @@ void SceneTitle::DrawGUI()
 		0.01f,
 		1.0f
 	);
+
+	if (ImGui::CollapsingHeader("High Score UI"))
+	{
+		ImGui::DragFloat2("Max Kills Pos", &bestScorePos.x);
+		ImGui::SliderFloat("Max Kills Scale", &bestScoreScale, 0.1f, 1.0f);
+		ImGui::DragFloat2("Best Time Pos", &bestTimePos.x);
+		ImGui::SliderFloat("Best Time Scale", &bestTimeScale, 0.1f, 1.0f);
+	}
 
 	ImGui::End();
 #endif

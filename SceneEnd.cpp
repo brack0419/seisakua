@@ -10,6 +10,9 @@
 
 extern float saveSpeed;
 
+extern int globalMaxKills;
+extern float globalBestTime;
+
 SceneEnd::SceneEnd(framework* fw, float time, int enemyCount)
 	: fw_(fw), clearTime(time), defeatedEnemies(enemyCount)
 {
@@ -20,6 +23,18 @@ SceneEnd::SceneEnd(framework* fw, float time, int enemyCount)
 void SceneEnd::Initialize()
 {
 	HRESULT hr{ S_OK };
+
+	// キル数の更新
+	if (defeatedEnemies > globalMaxKills)
+	{
+		globalMaxKills = defeatedEnemies;
+	}
+
+	// タイムの更新 (ベストが0.0(=初プレイ) または 今回の方が速ければ更新)
+	if (globalBestTime == 0.0f || clearTime < globalBestTime)
+	{
+		globalBestTime = clearTime;
+	}
 
 	skinned_meshes[0] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\End_building.cereal");
 	//skinned_meshes[1] = std::make_unique<skinned_mesh>(fw_->device.Get(), ".\\resources\\End_building2.cereal");
